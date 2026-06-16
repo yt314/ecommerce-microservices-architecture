@@ -75,6 +75,25 @@ services:
     volumes:
       - redis-data:/data
 
+  # Message broker for the async order saga. Management UI on 15672 (guest/guest).
+  rabbitmq:
+    image: rabbitmq:3.13-management
+    container_name: ecommerce-rabbitmq
+    environment:
+      RABBITMQ_DEFAULT_USER: "guest"
+      RABBITMQ_DEFAULT_PASS: "guest"
+    ports:
+      - "5672:5672"     # AMQP
+      - "15672:15672"   # management UI: http://localhost:15672
+    healthcheck:
+      test: ["CMD", "rabbitmq-diagnostics", "-q", "ping"]
+      interval: 10s
+      timeout: 5s
+      retries: 10
+      start_period: 20s
+    volumes:
+      - rabbitmq-data:/var/lib/rabbitmq
+
   # ----------------------- Backend services (internal only) -----------------------
 
   # NOTE: no container_name and no host ports, so it can be scaled to N replicas.
@@ -86,8 +105,12 @@ services:
       ASPNETCORE_ENVIRONMENT: "Development"
       Mongo__ConnectionString: "mongodb://mongo:27017"
       Mongo__Database: "ProductCatalog"
+      # Cache-aside read cache in Redis logical DB 1 (Notification uses DB 0).
+      Redis__ConnectionString: "redis:6379,defaultDatabase=1"
     depends_on:
       mongo:
+        condition: service_healthy
+      redis:
         condition: service_healthy
     deploy:
       replicas: 2
@@ -109,8 +132,13 @@ services:
     environment:
       ASPNETCORE_ENVIRONMENT: "Development"
       ConnectionStrings__Default: "Host=postgres;Port=5432;Database=InventoryDb;Username=postgres;Password=Your_password123"
+      RabbitMq__Host: "rabbitmq"
+      RabbitMq__Username: "guest"
+      RabbitMq__Password: "guest"
     depends_on:
       postgres:
+        condition: service_healthy
+      rabbitmq:
         condition: service_healthy
 
   order:
@@ -121,19 +149,19 @@ services:
     environment:
       ASPNETCORE_ENVIRONMENT: "Development"
       ConnectionStrings__Default: "Server=sqlserver,1433;Database=OrderDb;User Id=sa;Password=Your_password123;TrustServerCertificate=True;Encrypt=False"
-      # OrderService reaches the catalog through the load balancer.
+      # Only product validation stays synchronous (via the catalog load balancer).
       Services__ProductCatalog: "http://catalog-lb:80"
-      Services__Inventory: "http://inventory:8080"
-      Services__Notification: "http://notification:8080"
+      # Inventory + notification are now event-driven over RabbitMQ.
+      RabbitMq__Host: "rabbitmq"
+      RabbitMq__Username: "guest"
+      RabbitMq__Password: "guest"
     depends_on:
       sqlserver:
         condition: service_healthy
       catalog-lb:
         condition: service_started
-      inventory:
-        condition: service_started
-      notification:
-        condition: service_started
+      rabbitmq:
+        condition: service_healthy
 
   notification:
     build:
@@ -142,9 +170,15 @@ services:
     container_name: ecommerce-notification
     environment:
       ASPNETCORE_ENVIRONMENT: "Development"
+      # NotificationService uses Redis logical DB 0 (catalog cache uses DB 1).
       Redis__ConnectionString: "redis:6379"
+      RabbitMq__Host: "rabbitmq"
+      RabbitMq__Username: "guest"
+      RabbitMq__Password: "guest"
     depends_on:
       redis:
+        condition: service_healthy
+      rabbitmq:
         condition: service_healthy
 
   # ----------------------- BFF (internal, reached via gateway /bff) -----------------------
@@ -190,3 +224,4 @@ volumes:
   postgres-data:
   mssql-data:
   redis-data:
+  rabbitmq-data:

@@ -11,8 +11,13 @@ namespace ProductCatalogService.Controllers;
 public class ProductsController : ControllerBase
 {
     private readonly ProductRepository _repository;
+    private readonly ProductCache _cache;
 
-    public ProductsController(ProductRepository repository) => _repository = repository;
+    public ProductsController(ProductRepository repository, ProductCache cache)
+    {
+        _repository = repository;
+        _cache = cache;
+    }
 
     /// <summary>
     /// Returns which replica/container served this request. Used to prove load
@@ -49,11 +54,11 @@ public class ProductsController : ControllerBase
         return Ok(products.Select(ToResponse));
     }
 
-    /// <summary>Get a single product by id.</summary>
+    /// <summary>Get a single product by id (cache-aside via Redis).</summary>
     [HttpGet("{id}")]
     public async Task<ActionResult<ProductResponse>> GetById(string id)
     {
-        var product = await _repository.GetByIdAsync(id);
+        var product = await _cache.GetByIdAsync(id);
         return product is null
             ? NotFound(new { error = $"Product {id} was not found." })
             : Ok(ToResponse(product));
@@ -76,6 +81,9 @@ public class ProductsController : ControllerBase
         var updated = await _repository.UpdateAsync(id, product);
         if (!updated)
             return NotFound(new { error = $"Product {id} was not found." });
+
+        // Cache-aside invalidation: drop the stale cached copy.
+        await _cache.InvalidateAsync(id);
 
         product.Id = id;
         return Ok(ToResponse(product));

@@ -1,4 +1,5 @@
 using NotificationService.Data;
+using Shared.Messaging;
 using StackExchange.Redis;
 
 var builder = WebApplication.CreateBuilder(args);
@@ -6,6 +7,10 @@ var builder = WebApplication.CreateBuilder(args);
 builder.Services.AddControllers();
 builder.Services.AddEndpointsApiExplorer();
 builder.Services.AddSwaggerGen(o => o.SwaggerDoc("v1", new() { Title = "NotificationService", Version = "v1" }));
+
+// RabbitMQ connection + the consumer that records final order notifications.
+builder.Services.AddRabbitMqMessaging();
+builder.Services.AddHostedService<NotificationSagaConsumer>();
 
 // Redis connection (singleton multiplexer). AbortOnConnectFail=false lets the
 // service start even if Redis is still booting; it reconnects automatically.

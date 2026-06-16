@@ -6,12 +6,98 @@ production-style microservices, phase by phase.
 - **Phase 1 (done):** a single .NET 8 WebAPI monolith + one SQL Server database.
 - **Phase 2 (done):** split into **4 microservices** with **database-per-service**
   and **polyglot persistence**.
-- **Phase 3 (current):** add an **API Gateway (YARP)**, a **BFF**, and **load
-  balancing** (2 ProductCatalog replicas behind Nginx). The gateway is the only
-  exposed entry point.
+- **Phase 3 (done):** **API Gateway (YARP)**, a **BFF**, and **load balancing**
+  (2 ProductCatalog replicas behind Nginx).
+- **Phase 4 (current):** **async order saga over RabbitMQ** (choreography),
+  happy + compensation paths, idempotent consumers, and **Redis cache-aside** for
+  ProductCatalog reads.
 
-> Phase 3 still uses synchronous HTTP between services. No message broker, saga,
-> cache-aside, or monitoring yet — those are later phases.
+> Phase 4 still has no centralized log aggregation / correlation tracing or
+> CI/CD — those are Phase 5 / bonus.
+
+---
+
+## Phase 4 — Async Messaging, Saga & Caching (current)
+
+Order placement is now **asynchronous**. `POST /orders` returns a **Pending**
+order immediately; the final status is decided by a **RabbitMQ choreography saga**.
+
+```
+POST /orders → Pending → [OrderPlaced] → Inventory reserves → [InventoryReserved]
+            → Order Confirmed → [OrderConfirmed] → Notification records "Confirmed"
+out of stock → [InventoryRejected] → Order Rejected → [OrderRejected] → "Rejected"
+```
+
+- **Broker:** RabbitMQ, durable topic exchange `ecommerce.events`, durable queues,
+  persistent messages, **management UI at http://localhost:15672 (guest/guest)**.
+- **Idempotency:** Inventory has a `ProcessedOrders` table; OrderService only acts
+  while `Pending`; NotificationService uses Redis `SET ... NX`. Consumers are
+  prefetch=1. (Details in [docs/microservices-architecture.md](docs/microservices-architecture.md).)
+- **Cache-aside:** `GET /api/products/{id}` caches to Redis key
+  `catalog:product:{id}` (logical **DB 1**); `PUT` invalidates it.
+
+> **⚠️ Upgrading from a previous phase?** Phase 4 adds a table to the Inventory
+> database and the app uses `EnsureCreated` (not migrations), which won't alter an
+> existing DB. Run a **one-time** `docker compose down -v` before `up` so all
+> schemas are recreated. (On a fresh machine this is automatic.)
+
+### Run it
+
+```bash
+./publish-all.sh            # or  .\publish-all.ps1
+docker compose down -v      # only when upgrading from an earlier phase's volumes
+docker compose up --build   # gateway + bff + nginx LB + RabbitMQ + 4 services + 4 DBs
+```
+
+### Test the async happy path
+
+```bash
+# create a product + stock
+PID=...   # id returned by POST /catalog/api/products, then PUT /inventory/api/inventory/$PID {"quantityAvailable":5,...}
+# place order — returns status "Pending" immediately
+curl -X POST http://localhost:8080/orders/api/orders -H "Content-Type: application/json" \
+  -d '{"customerEmail":"a@b.com","items":[{"productId":"'$PID'","quantity":2}]}'
+# poll — becomes "Confirmed" within ~1-2s; inventory available drops, reserved rises
+curl http://localhost:8080/orders/api/orders/<ORDER_ID>
+curl http://localhost:8080/notifications/api/notifications     # a "Confirmed" record appears
+```
+
+### Test the out-of-stock failure path
+
+```bash
+# product with only 1 in stock, order 10:
+curl -X POST http://localhost:8080/orders/api/orders -H "Content-Type: application/json" \
+  -d '{"customerEmail":"a@b.com","items":[{"productId":"'$PID'","quantity":10}]}'
+curl http://localhost:8080/orders/api/orders/<ORDER_ID>   # becomes "Rejected" with a reason
+# inventory stays UNCHANGED; a "Rejected" notification is recorded
+```
+
+### Prove cache miss vs hit
+
+```bash
+# GET the same product twice, then update it, then GET again:
+curl http://localhost:8080/catalog/api/products/<PID>   # x2
+curl -X PUT http://localhost:8080/catalog/api/products/<PID> -H "Content-Type: application/json" -d '{...}'
+curl http://localhost:8080/catalog/api/products/<PID>
+# inspect logs of both replicas:
+docker logs project-ai-productcatalog-1 | grep CACHE
+docker logs project-ai-productcatalog-2 | grep CACHE
+# expect: CACHE MISS, then CACHE HIT, then CACHE INVALIDATE, then CACHE MISS
+```
+
+### Phase 4 checkpoint checklist
+
+- [ ] RabbitMQ runs (UI at http://localhost:15672, guest/guest)
+- [ ] OrderService publishes `OrderPlaced`; order returns as Pending
+- [ ] InventoryService consumes `OrderPlaced` and reserves stock
+- [ ] InventoryService publishes `InventoryReserved` / `InventoryRejected`
+- [ ] OrderService confirms/rejects the order asynchronously
+- [ ] NotificationService records the final notification from events
+- [ ] Out-of-stock order becomes Rejected, inventory unchanged
+- [ ] Cache-aside works: `CACHE MISS` then `CACHE HIT` in catalog logs
+- [ ] Gateway and BFF still work
+- [ ] `docker compose up` runs everything from the root
+- [ ] README and architecture docs updated
 
 ---
 
@@ -135,8 +221,9 @@ NotificationService.
 | Component | URL / Port | Exposed to host? |
 |---|---|---|
 | **API Gateway** | http://localhost:8080 | **Yes (only app entry)** |
+| **RabbitMQ management UI** | http://localhost:15672 (guest/guest) | Yes (dev) |
 | ProductCatalogService (×2), Inventory, Order, Notification, BFF, catalog-lb | — | No (internal) |
-| MongoDB / PostgreSQL / SQL Server / Redis | 27017 / 5432 / 1433 / 6379 | Yes (dev convenience) |
+| MongoDB / PostgreSQL / SQL Server / Redis / RabbitMQ-AMQP | 27017 / 5432 / 1433 / 6379 / 5672 | Yes (dev convenience) |
 
 ---
 
@@ -158,21 +245,22 @@ Monolith docs: [docs/monolith-architecture.md](docs/monolith-architecture.md).
 ## Repository structure
 
 ```
-docker-compose.yml            # Phase 3: gateway + bff + nginx LB + 4 services + 4 DBs
+docker-compose.yml            # Phase 4: gateway + bff + nginx LB + RabbitMQ + 4 services + 4 DBs
 docker-compose.phase1.yml     # Phase 1 monolith (preserved)
 publish-all.sh / .ps1         # publish all services before compose
 infra/
   catalog-lb/nginx.conf       # Nginx load balancer for catalog replicas
 src/
   ECommerce.Monolith.Api/     # Phase 1 baseline
-  ProductCatalogService/      # MongoDB (runs as 2 replicas in Phase 3)
-  InventoryService/           # PostgreSQL
-  OrderService/               # SQL Server + HTTP clients
-  NotificationService/        # Redis
-  WebBffService/              # Phase 3 BFF (aggregation, no DB)
-  ApiGateway/                 # Phase 3 YARP gateway (single entry point)
+  Shared.Messaging/           # Phase 4: RabbitMQ contracts + publish/consume helpers
+  ProductCatalogService/      # MongoDB (2 replicas) + Redis cache-aside (Phase 4)
+  InventoryService/           # PostgreSQL + saga consumer (Phase 4)
+  OrderService/               # SQL Server + saga publisher/consumer (Phase 4)
+  NotificationService/        # Redis + saga consumer (Phase 4)
+  WebBffService/              # BFF (aggregation, no DB)
+  ApiGateway/                 # YARP gateway (single entry point)
 docs/
   monolith-architecture.md
-  microservices-architecture.md   # includes the Phase 3 section + diagram
+  microservices-architecture.md   # includes the Phase 3 + Phase 4 sections + diagrams
   adr/                        # one ADR per database choice
 ```

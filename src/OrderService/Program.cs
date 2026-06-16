@@ -2,6 +2,7 @@ using Microsoft.EntityFrameworkCore;
 using OrderService.Clients;
 using OrderService.Data;
 using OrderService.Services;
+using Shared.Messaging;
 
 var builder = WebApplication.CreateBuilder(args);
 
@@ -13,20 +14,19 @@ builder.Services.AddSwaggerGen(o => o.SwaggerDoc("v1", new() { Title = "OrderSer
 var connectionString = builder.Configuration.GetConnectionString("Default");
 builder.Services.AddDbContext<OrderDbContext>(o => o.UseSqlServer(connectionString));
 
-// Typed HTTP clients for the other services. Base addresses come from config
-// (env vars in docker-compose), so OrderService never reaches another database.
+// Product validation stays synchronous (fast). Inventory + notification are now
+// event-driven, so those HTTP clients are gone.
 builder.Services.AddHttpClient<ProductCatalogClient>(c =>
     c.BaseAddress = new Uri(builder.Configuration["Services:ProductCatalog"] ?? "http://localhost:8081"));
-builder.Services.AddHttpClient<InventoryClient>(c =>
-    c.BaseAddress = new Uri(builder.Configuration["Services:Inventory"] ?? "http://localhost:8082"));
-builder.Services.AddHttpClient<NotificationClient>(c =>
-    c.BaseAddress = new Uri(builder.Configuration["Services:Notification"] ?? "http://localhost:8084"));
+
+// RabbitMQ: connection + publisher, plus the saga consumer (inventory results).
+builder.Services.AddRabbitMqMessaging();
+builder.Services.AddHostedService<OrderSagaConsumer>();
 
 builder.Services.AddScoped<OrderProcessor>();
 
 var app = builder.Build();
 
-// Create the schema on startup, retrying while SQL Server finishes booting.
 await InitializeDatabaseAsync(app);
 
 app.UseSwagger();

@@ -9,6 +9,8 @@
   <ItemGroup>
     <!-- Official MongoDB driver: this service owns a document database. -->
     <PackageReference Include="MongoDB.Driver" Version="2.28.0" />
+    <!-- Redis client for the cache-aside read cache (logical DB 1). -->
+    <PackageReference Include="StackExchange.Redis" Version="2.8.16" />
     <!-- Swagger / OpenAPI for interactive docs and testing. -->
     <PackageReference Include="Swashbuckle.AspNetCore" Version="6.6.2" />
   </ItemGroup>

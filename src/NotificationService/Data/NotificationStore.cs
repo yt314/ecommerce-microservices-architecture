@@ -27,6 +27,32 @@ public class NotificationStore
         _logger = logger;
     }
 
+    /// <summary>
+    /// Records a notification triggered by a saga event, idempotently. Uses a
+    /// Redis SET-if-not-exists on "notification:processed:{orderId}" so a duplicate
+    /// final event for the same order does not create a second notification.
+    /// </summary>
+    public async Task RecordFromEventAsync(int orderId, string customerEmail, string status, string message, DateTime createdAt)
+    {
+        var db = _redis.GetDatabase();
+        var processedKey = $"notification:processed:{orderId}";
+
+        var isNew = await db.StringSetAsync(processedKey, status, when: When.NotExists);
+        if (!isNew)
+        {
+            _logger.LogInformation("Duplicate final event for order {OrderId}; notification already recorded — skipping.", orderId);
+            return;
+        }
+
+        await RecordAsync(new CreateNotificationRequest
+        {
+            CustomerEmail = customerEmail,
+            OrderId = orderId.ToString(),
+            Status = status,
+            Message = message
+        }, createdAt);
+    }
+
     public async Task<NotificationRecord> RecordAsync(CreateNotificationRequest request, DateTime createdAt)
     {
         var db = _redis.GetDatabase();

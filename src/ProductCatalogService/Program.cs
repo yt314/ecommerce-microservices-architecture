@@ -1,11 +1,19 @@
 using MongoDB.Driver;
 using ProductCatalogService.Data;
+using StackExchange.Redis;
 
 var builder = WebApplication.CreateBuilder(args);
 
 builder.Services.AddControllers();
 builder.Services.AddEndpointsApiExplorer();
 builder.Services.AddSwaggerGen(o => o.SwaggerDoc("v1", new() { Title = "ProductCatalogService", Version = "v1" }));
+
+// --- Redis cache-aside wiring (logical DB 1 — separate from NotificationService) ---
+var redisConnection = builder.Configuration["Redis:ConnectionString"] ?? "localhost:6379,defaultDatabase=1";
+var redisOptions = ConfigurationOptions.Parse(redisConnection);
+redisOptions.AbortOnConnectFail = false;
+builder.Services.AddSingleton<IConnectionMultiplexer>(_ => ConnectionMultiplexer.Connect(redisOptions));
+builder.Services.AddScoped<ProductCache>();
 
 // --- MongoDB wiring ---
 // The connection string and database name come from configuration / env vars.

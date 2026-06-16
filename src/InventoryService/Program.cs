@@ -1,6 +1,7 @@
 using InventoryService.Data;
 using InventoryService.Services;
 using Microsoft.EntityFrameworkCore;
+using Shared.Messaging;
 
 var builder = WebApplication.CreateBuilder(args);
 
@@ -12,6 +13,10 @@ builder.Services.AddSwaggerGen(o => o.SwaggerDoc("v1", new() { Title = "Inventor
 var connectionString = builder.Configuration.GetConnectionString("Default");
 builder.Services.AddDbContext<InventoryDbContext>(o => o.UseNpgsql(connectionString));
 builder.Services.AddScoped<InventoryManager>();
+
+// RabbitMQ: connection + publisher, plus the saga consumer (OrderPlaced).
+builder.Services.AddRabbitMqMessaging();
+builder.Services.AddHostedService<InventorySagaConsumer>();
 
 var app = builder.Build();
 

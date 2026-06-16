@@ -14,14 +14,18 @@ public class OrdersController : ControllerBase
     public OrdersController(OrderProcessor orders) => _orders = orders;
 
     /// <summary>
-    /// Place an order. Always returns 201 with the created order; check the
-    /// "status" field — "Confirmed" or "Rejected" (with a rejectionReason).
+    /// Place an order. Returns 201 quickly with a PENDING order; the final status
+    /// (Confirmed/Rejected) is decided asynchronously via the saga — poll
+    /// GET /api/orders/{id} to see it. Returns 422 if a product is invalid.
     /// </summary>
     [HttpPost]
     public async Task<ActionResult<OrderResponse>> Place(CreateOrderRequest request)
     {
-        var order = await _orders.PlaceOrderAsync(request);
-        return CreatedAtAction(nameof(GetById), new { id = order.Id }, order);
+        var result = await _orders.PlaceOrderAsync(request);
+        if (result.ValidationError is not null)
+            return UnprocessableEntity(new { error = result.ValidationError });
+
+        return CreatedAtAction(nameof(GetById), new { id = result.Order!.Id }, result.Order);
     }
 
     /// <summary>List all orders (newest first).</summary>

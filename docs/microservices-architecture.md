@@ -216,6 +216,127 @@ which breaks with scaled replicas. The config uses Docker's embedded DNS resolve
 rotates them, producing round-robin balancing. (Scale further with
 `docker compose up -d --scale productcatalog=3`.)
 
+---
+
+# Phase 4 — Async Messaging, Saga & Caching
+
+Phase 4 replaces the **synchronous** order flow with **asynchronous messaging**
+over **RabbitMQ**, implemented as a **choreography saga**, and adds **Redis
+cache-aside** to ProductCatalogService reads.
+
+## What changed from Phase 3 → Phase 4
+
+| | Phase 3 | Phase 4 |
+|---|---|---|
+| Order placement | OrderService calls Inventory + Notification over HTTP and returns the final status | OrderService saves **Pending**, publishes `OrderPlaced`, returns immediately |
+| Inventory reservation | synchronous HTTP | event-driven (consumes `OrderPlaced`) |
+| Notifications | synchronous HTTP | event-driven (consumes final events) |
+| Final status | known at POST time | becomes Confirmed/Rejected **asynchronously** |
+| ProductCatalog reads | MongoDB every time | **Redis cache-aside** (DB 1) |
+| New infra | — | RabbitMQ (broker + management UI) |
+
+OrderService still validates products **synchronously** against
+ProductCatalogService during creation (a fast fail for a bad product id); only
+inventory and notifications are event-driven.
+
+## Messaging topology
+
+- **Exchange:** `ecommerce.events` (durable, topic). **Messages:** persistent.
+- **Queues:** durable; consumers use **prefetch=1** (one message at a time).
+
+```mermaid
+flowchart LR
+    subgraph OrderService
+      O1["POST /orders → save Pending"]
+      O2["consume inventory results"]
+    end
+    EX{{"ecommerce.events\n(topic exchange)"}}
+    subgraph InventoryService
+      I1["consume OrderPlaced → reserve"]
+    end
+    subgraph NotificationService
+      N1["consume final events → Redis"]
+    end
+
+    O1 -- "order.placed" --> EX
+    EX -- "order.placed" --> I1
+    I1 -- "inventory.reserved / inventory.rejected" --> EX
+    EX -- "inventory.*" --> O2
+    O2 -- "order.confirmed / order.rejected" --> EX
+    EX -- "order.*" --> N1
+```
+
+| Queue | Routing keys | Consumer |
+|---|---|---|
+| `inventory.order-placed` | `order.placed` | InventoryService |
+| `order.inventory-results` | `inventory.reserved`, `inventory.rejected` | OrderService |
+| `notification.order-final` | `order.confirmed`, `order.rejected` | NotificationService |
+
+## Saga flow (choreography)
+
+**Happy path:** `OrderPlaced` → Inventory reserves → `InventoryReserved` →
+Order set **Confirmed** → `OrderConfirmed` → Notification records "Confirmed".
+
+**Failure path:** `OrderPlaced` → Inventory has no stock (reserves **nothing**)
+→ `InventoryRejected` → Order set **Rejected** → `OrderRejected` → Notification
+records "Rejected". **Inventory is never decremented**, so no stock compensation
+is required. Because the rejection happens *before* any reservation, this
+choreography needs no reserve-then-release step; if a future step reserved stock
+and then failed, an `InventoryReleased` event would be added here.
+
+## Idempotency (at-least-once delivery)
+
+RabbitMQ may deliver a message more than once, so every consumer is idempotent:
+
+- **InventoryService** keeps a `ProcessedOrders` table (unique `OrderId`). If an
+  `OrderPlaced` arrives for an already-processed order, it **re-publishes the
+  stored outcome** instead of reserving stock again → no double reservation.
+- **OrderService** only acts on an inventory result while the order is still
+  `Pending`. A duplicate `InventoryReserved/Rejected` is ignored → no double
+  status change and no duplicate downstream event.
+- **NotificationService** does a Redis `SET notification:processed:{orderId} NX`;
+  if the key already exists it skips → no duplicate notification.
+- Consumers use **prefetch=1**, so each queue is processed sequentially, which
+  keeps these guards race-free for the demo.
+
+## Redis cache-aside (ProductCatalogService)
+
+- Key `catalog:product:{id}` in Redis **logical DB 1** (NotificationService uses
+  DB 0 — separate concerns, same Redis server).
+- **Read** `GET /api/products/{id}`: hit → `CACHE HIT` from Redis; miss →
+  `CACHE MISS`, read MongoDB, store with a 10-minute TTL.
+- **Invalidation** on `PUT /api/products/{id}`: update MongoDB, then **delete**
+  the key (`CACHE INVALIDATE`); the next read repopulates. The list endpoint is
+  not cached, which keeps invalidation trivial.
+- The cache is **shared across both catalog replicas**, so a miss on one replica
+  populates the cache for the other.
+
+## How to test (also see README)
+
+```bash
+# Happy path: place an order, watch Pending → Confirmed
+curl -X POST http://localhost:8080/orders/api/orders -H "Content-Type: application/json" \
+  -d '{"customerEmail":"a@b.com","items":[{"productId":"<ID>","quantity":2}]}'
+curl http://localhost:8080/orders/api/orders/<ORDER_ID>     # poll until Confirmed
+
+# Failure path: order more than is in stock → Rejected, inventory unchanged
+# Cache: GET the same product twice and watch the catalog logs:
+docker logs project-ai-productcatalog-1 | grep CACHE
+docker logs project-ai-productcatalog-2 | grep CACHE
+```
+
+## Demo evidence to capture
+
+- **Saga happy path:** OrderService log "publishing OrderPlaced" → InventoryService
+  "stock RESERVED" → OrderService "CONFIRMED" → NotificationService notification;
+  plus the order changing Pending → Confirmed.
+- **Compensation path:** InventoryService "REJECTED ... Stock left unchanged" →
+  OrderService "REJECTED" → rejection notification; order Pending → Rejected.
+- **Cache:** catalog logs showing `CACHE MISS` then `CACHE HIT`, and
+  `CACHE INVALIDATE` after an update.
+- **RabbitMQ management UI:** http://localhost:15672 (guest/guest) — the three
+  queues and message rates.
+
 ## ADRs
 
 Database choices are justified in [docs/adr/](./adr):

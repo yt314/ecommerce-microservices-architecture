@@ -3,84 +3,66 @@ using OrderService.Clients;
 using OrderService.Data;
 using OrderService.DTOs;
 using OrderService.Entities;
+using Shared.Messaging;
 
 namespace OrderService.Services;
 
+/// <summary>Result of placing an order: either a Pending order or a validation error.</summary>
+public record PlaceOrderResult(OrderResponse? Order, string? ValidationError);
+
 /// <summary>
-/// Orchestrates placing an order across services over synchronous HTTP:
-///   1. Validate every product via ProductCatalogService.
-///   2. Reserve stock for every line via InventoryService.
-///   3. Persist a Confirmed (or Rejected) order in OrderService's own database.
-///   4. Record a notification via NotificationService.
+/// OrderService's part of the choreography saga.
 ///
-/// If a later reservation fails, we release the earlier ones (best-effort
-/// compensation). Full event-driven saga compensation arrives in Phase 4 —
-/// this stays deliberately simple and synchronous for Phase 2.
+/// PlaceOrderAsync (sync, fast):
+///   - validate products against ProductCatalogService (fast-fail on bad product)
+///   - save a PENDING order with price snapshots
+///   - publish OrderPlaced and return immediately
+///
+/// HandleInventoryReserved/Rejected (async, from the broker):
+///   - move the order to Confirmed/Rejected and publish the matching event
+///   - idempotent: only acts while the order is still Pending
 /// </summary>
 public class OrderProcessor
 {
     private readonly OrderDbContext _db;
     private readonly ProductCatalogClient _catalog;
-    private readonly InventoryClient _inventory;
-    private readonly NotificationClient _notifications;
+    private readonly EventPublisher _publisher;
+    private readonly ILogger<OrderProcessor> _logger;
 
     public OrderProcessor(
         OrderDbContext db,
         ProductCatalogClient catalog,
-        InventoryClient inventory,
-        NotificationClient notifications)
+        EventPublisher publisher,
+        ILogger<OrderProcessor> logger)
     {
         _db = db;
         _catalog = catalog;
-        _inventory = inventory;
-        _notifications = notifications;
+        _publisher = publisher;
+        _logger = logger;
     }
 
-    public async Task<OrderResponse> PlaceOrderAsync(CreateOrderRequest request)
+    public async Task<PlaceOrderResult> PlaceOrderAsync(CreateOrderRequest request)
     {
-        // Merge duplicate product lines.
         var requested = request.Items
             .GroupBy(i => i.ProductId)
             .ToDictionary(g => g.Key, g => g.Sum(x => x.Quantity));
 
-        // --- Step 1: validate all products against the catalog ---
-        var products = new Dictionary<string, CatalogProduct>();
-        foreach (var productId in requested.Keys)
-        {
-            var product = await _catalog.GetProductAsync(productId);
-            if (product is null)
-                return await RejectAsync(request, $"Product {productId} does not exist.");
-            if (!product.IsActive)
-                return await RejectAsync(request, $"Product {productId} ('{product.Name}') is not available for purchase.");
-            products[productId] = product;
-        }
-
-        // --- Step 2: reserve stock for every line (compensate on failure) ---
-        var reserved = new List<(string productId, int qty)>();
-        foreach (var (productId, qty) in requested)
-        {
-            var result = await _inventory.ReserveAsync(productId, qty);
-            if (!result.Success)
-            {
-                // Roll back the reservations we already made.
-                foreach (var (rid, rqty) in reserved)
-                    await _inventory.ReleaseAsync(rid, rqty);
-
-                return await RejectAsync(request, result.Message);
-            }
-            reserved.Add((productId, qty));
-        }
-
-        // --- Step 3: all good — persist a Confirmed order ---
+        // Synchronous product validation (fast). Inventory is checked later, async.
         var order = new Order
         {
             CustomerEmail = request.CustomerEmail,
-            Status = OrderStatus.Confirmed,
+            Status = OrderStatus.Pending,
             CreatedAt = DateTime.UtcNow
         };
+
         foreach (var (productId, qty) in requested)
         {
-            var product = products[productId];
+            var product = await _catalog.GetProductAsync(productId);
+            if (product is null)
+                return new PlaceOrderResult(null, $"Product {productId} does not exist.");
+            if (!product.IsActive)
+                return new PlaceOrderResult(null, $"Product {productId} ('{product.Name}') is not available for purchase.");
+
             order.Items.Add(new OrderItem
             {
                 ProductId = productId,
@@ -89,37 +71,60 @@ public class OrderProcessor
                 Quantity = qty
             });
         }
+
         order.TotalAmount = order.Items.Sum(i => i.UnitPrice * i.Quantity);
 
         _db.Orders.Add(order);
         await _db.SaveChangesAsync();
+        _logger.LogInformation("Order {OrderId} created as Pending; publishing OrderPlaced.", order.Id);
 
-        // --- Step 4: notify the customer ---
-        await _notifications.NotifyAsync(order.CustomerEmail, order.Id.ToString(), "Confirmed",
-            $"Your order #{order.Id} has been confirmed. Total: {order.TotalAmount:0.00}.");
+        // Kick off the saga.
+        _publisher.Publish(EventBusConstants.OrderPlacedKey, new OrderPlaced(
+            Guid.NewGuid(),
+            order.Id,
+            order.CustomerEmail,
+            order.Items.Select(i => new OrderLine(i.ProductId, i.Quantity)).ToList()));
 
-        return ToResponse(order);
+        return new PlaceOrderResult(ToResponse(order), null);
     }
 
-    /// <summary>Persists a Rejected order (no line snapshots needed) and notifies.</summary>
-    private async Task<OrderResponse> RejectAsync(CreateOrderRequest request, string reason)
+    /// <summary>InventoryReserved → confirm the order. Idempotent on order status.</summary>
+    public async Task HandleInventoryReservedAsync(int orderId)
     {
-        var order = new Order
+        var order = await _db.Orders.FirstOrDefaultAsync(o => o.Id == orderId);
+        if (order is null) { _logger.LogWarning("InventoryReserved for unknown order {OrderId}.", orderId); return; }
+        if (order.Status != OrderStatus.Pending)
         {
-            CustomerEmail = request.CustomerEmail,
-            Status = OrderStatus.Rejected,
-            CreatedAt = DateTime.UtcNow,
-            RejectionReason = reason,
-            TotalAmount = 0
-        };
+            _logger.LogInformation("Order {OrderId} already {Status}; ignoring duplicate InventoryReserved.", orderId, order.Status);
+            return;
+        }
 
-        _db.Orders.Add(order);
+        order.Status = OrderStatus.Confirmed;
         await _db.SaveChangesAsync();
+        _logger.LogInformation("Order {OrderId} CONFIRMED; publishing OrderConfirmed.", orderId);
 
-        await _notifications.NotifyAsync(order.CustomerEmail, order.Id.ToString(), "Rejected",
-            $"Your order #{order.Id} was rejected: {reason}");
+        _publisher.Publish(EventBusConstants.OrderConfirmedKey,
+            new OrderConfirmed(Guid.NewGuid(), order.Id, order.CustomerEmail, order.TotalAmount));
+    }
 
-        return ToResponse(order);
+    /// <summary>InventoryRejected → reject the order. Idempotent on order status.</summary>
+    public async Task HandleInventoryRejectedAsync(int orderId, string reason)
+    {
+        var order = await _db.Orders.FirstOrDefaultAsync(o => o.Id == orderId);
+        if (order is null) { _logger.LogWarning("InventoryRejected for unknown order {OrderId}.", orderId); return; }
+        if (order.Status != OrderStatus.Pending)
+        {
+            _logger.LogInformation("Order {OrderId} already {Status}; ignoring duplicate InventoryRejected.", orderId, order.Status);
+            return;
+        }
+
+        order.Status = OrderStatus.Rejected;
+        order.RejectionReason = reason;
+        await _db.SaveChangesAsync();
+        _logger.LogInformation("Order {OrderId} REJECTED ({Reason}); publishing OrderRejected.", orderId, reason);
+
+        _publisher.Publish(EventBusConstants.OrderRejectedKey,
+            new OrderRejected(Guid.NewGuid(), order.Id, order.CustomerEmail, reason));
     }
 
     public async Task<List<OrderResponse>> GetAllAsync()
