@@ -1,8 +1,48 @@
-# Phase 1 monolith: one API container + one SQL Server container.
-# Start everything with:  docker compose up --build
+# Phase 2 — Microservices. ONE command runs all 4 services + all 4 databases.
+#
+# Before running, publish all services on the host (NuGet restore fails inside
+# Docker on this machine), then bring everything up:
+#   ./publish-all.sh        (or  ./publish-all.ps1  on PowerShell)
+#   docker compose up --build
+#
+# Database-per-service:
+#   productcatalog -> mongo (document)      inventory    -> postgres (relational)
+#   order          -> sqlserver (relational) notification -> redis (key-value)
 services:
 
-  # --- Relational database (the single store for the whole monolith) ---
+  # ----------------------- Databases -----------------------
+
+  mongo:
+    image: mongo:7
+    container_name: ecommerce-mongo
+    ports:
+      - "27017:27017"
+    healthcheck:
+      test: ["CMD", "mongosh", "--quiet", "--eval", "db.runCommand({ ping: 1 }).ok"]
+      interval: 10s
+      timeout: 5s
+      retries: 10
+      start_period: 15s
+    volumes:
+      - mongo-data:/data/db
+
+  postgres:
+    image: postgres:16
+    container_name: ecommerce-postgres
+    environment:
+      POSTGRES_PASSWORD: "Your_password123"
+      POSTGRES_DB: "InventoryDb"
+    ports:
+      - "5432:5432"
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U postgres"]
+      interval: 10s
+      timeout: 5s
+      retries: 10
+      start_period: 15s
+    volumes:
+      - postgres-data:/var/lib/postgresql/data
+
   sqlserver:
     image: mcr.microsoft.com/mssql/server:2022-latest
     container_name: ecommerce-sqlserver
@@ -10,10 +50,8 @@ services:
       ACCEPT_EULA: "Y"
       MSSQL_SA_PASSWORD: "Your_password123"
     ports:
-      # Exposed to the host so you can connect with SSMS/Azure Data Studio if you want.
       - "1433:1433"
     healthcheck:
-      # Considered healthy once SQL Server answers a trivial query.
       test: ["CMD-SHELL", "/opt/mssql-tools18/bin/sqlcmd -S localhost -U sa -P \"Your_password123\" -C -Q \"SELECT 1\" || exit 1"]
       interval: 10s
       timeout: 5s
@@ -22,22 +60,90 @@ services:
     volumes:
       - mssql-data:/var/opt/mssql
 
-  # --- The .NET 8 WebAPI monolith ---
-  api:
+  redis:
+    image: redis:7
+    container_name: ecommerce-redis
+    ports:
+      - "6379:6379"
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 10s
+      timeout: 5s
+      retries: 10
+      start_period: 5s
+    volumes:
+      - redis-data:/data
+
+  # ----------------------- Services -----------------------
+
+  productcatalog:
     build:
-      context: ./src/ECommerce.Monolith.Api
+      context: ./src/ProductCatalogService
       dockerfile: Dockerfile
-    container_name: ecommerce-api
+    container_name: ecommerce-productcatalog
     environment:
       ASPNETCORE_ENVIRONMENT: "Development"
-      # Inside the compose network the DB host is the service name "sqlserver".
-      ConnectionStrings__Default: "Server=sqlserver,1433;Database=ECommerceMonolith;User Id=sa;Password=Your_password123;TrustServerCertificate=True;Encrypt=False"
+      Mongo__ConnectionString: "mongodb://mongo:27017"
+      Mongo__Database: "ProductCatalog"
     ports:
-      # Browse Swagger at http://localhost:8080/
-      - "8080:8080"
+      - "8081:8080"
+    depends_on:
+      mongo:
+        condition: service_healthy
+
+  inventory:
+    build:
+      context: ./src/InventoryService
+      dockerfile: Dockerfile
+    container_name: ecommerce-inventory
+    environment:
+      ASPNETCORE_ENVIRONMENT: "Development"
+      ConnectionStrings__Default: "Host=postgres;Port=5432;Database=InventoryDb;Username=postgres;Password=Your_password123"
+    ports:
+      - "8082:8080"
+    depends_on:
+      postgres:
+        condition: service_healthy
+
+  order:
+    build:
+      context: ./src/OrderService
+      dockerfile: Dockerfile
+    container_name: ecommerce-order
+    environment:
+      ASPNETCORE_ENVIRONMENT: "Development"
+      ConnectionStrings__Default: "Server=sqlserver,1433;Database=OrderDb;User Id=sa;Password=Your_password123;TrustServerCertificate=True;Encrypt=False"
+      Services__ProductCatalog: "http://productcatalog:8080"
+      Services__Inventory: "http://inventory:8080"
+      Services__Notification: "http://notification:8080"
+    ports:
+      - "8083:8080"
     depends_on:
       sqlserver:
         condition: service_healthy
+      productcatalog:
+        condition: service_started
+      inventory:
+        condition: service_started
+      notification:
+        condition: service_started
+
+  notification:
+    build:
+      context: ./src/NotificationService
+      dockerfile: Dockerfile
+    container_name: ecommerce-notification
+    environment:
+      ASPNETCORE_ENVIRONMENT: "Development"
+      Redis__ConnectionString: "redis:6379"
+    ports:
+      - "8084:8080"
+    depends_on:
+      redis:
+        condition: service_healthy
 
 volumes:
+  mongo-data:
+  postgres-data:
   mssql-data:
+  redis-data:
