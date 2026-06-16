@@ -311,6 +311,70 @@ RabbitMQ may deliver a message more than once, so every consumer is idempotent:
 - The cache is **shared across both catalog replicas**, so a miss on one replica
   populates the cache for the other.
 
+## Phase 5 — Monitoring & Observability
+
+### Structured logging → Seq
+
+Every service uses **Serilog** (configured once via the shared
+`builder.AddObservability("<ServiceName>")`) and writes structured events to:
+
+- the **console** (for `docker logs`), and
+- a central **Seq** aggregator (`datalust/seq`), reachable at
+  **http://localhost:5341**. Inside the compose network services log to
+  `http://seq` (env `Seq__ServerUrl`).
+
+Every event is enriched with `Service`, and — via Serilog's `LogContext` / log
+scopes — `CorrelationId` and (in saga handlers) `OrderId`. *Why Seq?* It is a
+single small container, needs no schema/index setup, and its query box
+(`CorrelationId = '...'`) makes the "trace one order" demo trivial — a better fit
+for a course demo than a full ELK stack.
+
+### Correlation ID — the design
+
+The id is a single value that must survive **two kinds of hop**: HTTP and the
+message broker. The implementation keeps the working saga almost untouched by
+using an **ambient** `CorrelationContext` (an `AsyncLocal<string?>` in
+`Shared.Messaging`) plus RabbitMQ's native `BasicProperties.CorrelationId`:
+
+| Hop | How the id travels |
+|---|---|
+| Client → Gateway | `CorrelationIdMiddleware` reads `X-Correlation-ID`, or **creates** one. It writes the id back onto the request headers so **YARP forwards it** downstream, and echoes it on the response. |
+| Gateway → service (HTTP) | Received in the header; the same middleware sets `CorrelationContext.Current` and pushes it into Serilog `LogContext`. |
+| Service → service (HTTP) | `CorrelationPropagationHandler` (a `DelegatingHandler`) copies `CorrelationContext.Current` onto outgoing calls — Order→Catalog and BFF→Order/Catalog. |
+| **Service → broker** | `EventPublisher` stamps `props.CorrelationId = CorrelationContext.Current` on **every** published event. |
+| **Broker → service** | `RabbitMqConsumerBase` reads `ea.BasicProperties.CorrelationId`, sets `CorrelationContext.Current`, and opens a log scope — so the handler's logs **and any event it publishes** carry the same id. |
+
+Because publish reads the ambient context and consume restores it, the id flows
+`order.placed → inventory.reserved → order.confirmed` automatically, with **no
+change to the saga method signatures**.
+
+### Health & healthchecks
+
+Each .NET service exposes `/health` (added in Phase 3) and has a docker-compose
+`healthcheck`. The check is a **self-probe** — `dotnet <Service>.dll --healthcheck`
+runs a short-lived process that GETs the container's own `/health` and exits 0/1.
+This needs **no extra tooling** in the runtime image (no `curl`), which matters
+because this machine's Docker build cannot reach external package feeds.
+
+### One fully-traced saga (evidence)
+
+Filtering Seq by `CorrelationId = 'PHASE5-DEMO-001'` for a single confirmed order
+shows the complete timeline across services and the broker:
+
+```
+[ApiGateway]          Proxying to http://order:8080/api/orders ...
+[OrderService]        Order 1002 created as Pending; publishing OrderPlaced.
+[OrderService]        PUBLISH [order.placed]       CorrelationId=PHASE5-DEMO-001 {OrderId:1002,...}
+[InventoryService]    CONSUME [order.placed]       CorrelationId=PHASE5-DEMO-001
+[InventoryService]    Order 1002 stock RESERVED.
+[InventoryService]    PUBLISH [inventory.reserved] CorrelationId=PHASE5-DEMO-001
+[OrderService]        CONSUME [inventory.reserved] CorrelationId=PHASE5-DEMO-001
+[OrderService]        Order 1002 CONFIRMED; publishing OrderConfirmed.
+[OrderService]        PUBLISH [order.confirmed]    CorrelationId=PHASE5-DEMO-001
+[NotificationService] CONSUME [order.confirmed]    CorrelationId=PHASE5-DEMO-001
+[NotificationService] NOTIFICATION sent to obs@demo.com: order 1002 is Confirmed.
+```
+
 ## How to test (also see README)
 
 ```bash
@@ -336,6 +400,9 @@ docker logs project-ai-productcatalog-2 | grep CACHE
   `CACHE INVALIDATE` after an update.
 - **RabbitMQ management UI:** http://localhost:15672 (guest/guest) — the three
   queues and message rates.
+- **Correlation trace (Phase 5):** Seq (http://localhost:5341) filtered by one
+  `CorrelationId`, showing the full saga across Gateway → Order → Inventory →
+  Order → Notification, including the broker `PUBLISH`/`CONSUME` events.
 
 ## ADRs
 

@@ -1,0 +1,28 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <PropertyGroup>
+    <TargetFramework>net8.0</TargetFramework>
+    <Nullable>enable</Nullable>
+    <ImplicitUsings>enable</ImplicitUsings>
+  </PropertyGroup>
+
+  <!-- This library touches ASP.NET types (IApplicationBuilder, HttpContext,
+       DelegatingHandler), so it references the shared framework instead of
+       individual packages. -->
+  <ItemGroup>
+    <FrameworkReference Include="Microsoft.AspNetCore.App" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <!-- Serilog + the Seq sink: structured logging to console and the aggregator. -->
+    <PackageReference Include="Serilog.AspNetCore" Version="8.0.3" />
+    <PackageReference Include="Serilog.Sinks.Seq" Version="8.0.0" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <!-- Reuse the ambient CorrelationContext / header name defined for messaging,
+         so HTTP and broker hops share one correlation primitive. -->
+    <ProjectReference Include="../Shared.Messaging/Shared.Messaging.csproj" />
+  </ItemGroup>
+
+</Project>

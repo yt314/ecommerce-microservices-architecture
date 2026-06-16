@@ -8,16 +8,88 @@ production-style microservices, phase by phase.
   and **polyglot persistence**.
 - **Phase 3 (done):** **API Gateway (YARP)**, a **BFF**, and **load balancing**
   (2 ProductCatalog replicas behind Nginx).
-- **Phase 4 (current):** **async order saga over RabbitMQ** (choreography),
+- **Phase 4 (done):** **async order saga over RabbitMQ** (choreography),
   happy + compensation paths, idempotent consumers, and **Redis cache-aside** for
   ProductCatalog reads.
+- **Phase 5 (current):** **monitoring & observability** — structured logging
+  (Serilog) in every service, aggregated to **Seq**, `/health` endpoints wired into
+  docker-compose healthchecks, and a **Correlation ID** that traces one order
+  end-to-end across HTTP **and** the RabbitMQ saga.
 
-> Phase 4 still has no centralized log aggregation / correlation tracing or
-> CI/CD — those are Phase 5 / bonus.
+> CI/CD and the bonus phases are out of scope for now.
 
 ---
 
-## Phase 4 — Async Messaging, Saga & Caching (current)
+## Phase 5 — Monitoring & Observability (current)
+
+Every service now logs **structured** events with **Serilog** to the console and to
+a central **Seq** aggregator, and a single **Correlation ID** ties one order's whole
+journey together — including across the message broker.
+
+### What was added
+
+- **Serilog → Seq.** All 7 apps write structured logs to console + Seq. Browse and
+  filter them at **http://localhost:5341**. Each event carries `Service`,
+  `CorrelationId`, and (where relevant) `OrderId`.
+- **Correlation ID.** `X-Correlation-ID` is created (or accepted) at the **API
+  Gateway** boundary and flows down every hop:
+  - over **HTTP** via a middleware (`UseCorrelationId`) + a propagation handler on
+    outgoing calls (Order→Catalog, BFF→Order/Catalog), and
+  - over **RabbitMQ** via the message's native `BasicProperties.CorrelationId` —
+    the publisher stamps it, the consumer reads it back, so the **same id survives
+    the broker hops**, not just HTTP headers.
+- **Healthchecks.** Every .NET service exposes `/health` and has a docker-compose
+  `healthcheck` (a self-probe: `dotnet <Service>.dll --healthcheck`, no extra image
+  tooling needed). `docker ps` shows each app as `(healthy)`.
+
+### The correlation flow
+
+```
+Client ─[X-Correlation-ID?]→ API Gateway (creates id if absent, forwards it)
+  → OrderService  (Pending, PUBLISH order.placed  + CorrelationId)
+     → RabbitMQ → InventoryService (reserve, PUBLISH inventory.reserved/rejected + same CorrelationId)
+        → RabbitMQ → OrderService  (Confirm/Reject, PUBLISH order.confirmed/rejected + same CorrelationId)
+           → RabbitMQ → NotificationService (records + logs with the same CorrelationId)
+```
+
+### Trace one order in Seq
+
+```bash
+# Send your own id so it's easy to find, or let the gateway generate one:
+curl -X POST http://localhost:8080/orders/api/orders \
+  -H "Content-Type: application/json" -H "X-Correlation-ID: PHASE5-DEMO-001" \
+  -d '{"customerEmail":"obs@demo.com","items":[{"productId":"<PID>","quantity":3}]}'
+```
+
+1. Open **http://localhost:5341**.
+2. In the filter box enter: `CorrelationId = 'PHASE5-DEMO-001'`
+3. You see one timeline spanning **ApiGateway → OrderService → InventoryService →
+   OrderService → NotificationService**, including the `PUBLISH` / `CONSUME` events
+   that crossed RabbitMQ — all sharing that one id.
+
+You can also see it on the console:
+
+```bash
+docker logs ecommerce-order        2>&1 | grep PHASE5-DEMO-001
+docker logs ecommerce-inventory    2>&1 | grep PHASE5-DEMO-001
+docker logs ecommerce-notification 2>&1 | grep PHASE5-DEMO-001
+```
+
+### Phase 5 checkpoint checklist
+
+- [x] Seq runs (UI at http://localhost:5341)
+- [x] Every service writes structured logs (console + Seq)
+- [x] `/health` exists per service
+- [x] docker-compose healthchecks exist (apps show `(healthy)`)
+- [x] Correlation ID is created or accepted at the Gateway/API boundary
+- [x] Correlation ID appears in HTTP logs
+- [x] Correlation ID appears in the RabbitMQ message flow (survives broker hops)
+- [x] One saga can be traced end-to-end by one CorrelationId
+- [x] README and architecture docs updated
+
+---
+
+## Phase 4 — Async Messaging, Saga & Caching (done)
 
 Order placement is now **asynchronous**. `POST /orders` returns a **Pending**
 order immediately; the final status is decided by a **RabbitMQ choreography saga**.
@@ -222,6 +294,7 @@ NotificationService.
 |---|---|---|
 | **API Gateway** | http://localhost:8080 | **Yes (only app entry)** |
 | **RabbitMQ management UI** | http://localhost:15672 (guest/guest) | Yes (dev) |
+| **Seq log aggregator (Phase 5)** | http://localhost:5341 | Yes (dev) |
 | ProductCatalogService (×2), Inventory, Order, Notification, BFF, catalog-lb | — | No (internal) |
 | MongoDB / PostgreSQL / SQL Server / Redis / RabbitMQ-AMQP | 27017 / 5432 / 1433 / 6379 / 5672 | Yes (dev convenience) |
 
@@ -253,6 +326,9 @@ infra/
 src/
   ECommerce.Monolith.Api/     # Phase 1 baseline
   Shared.Messaging/           # Phase 4: RabbitMQ contracts + publish/consume helpers
+                              #   + Phase 5: CorrelationContext (survives broker hops)
+  Shared.Observability/       # Phase 5: Serilog/Seq setup, correlation middleware,
+                              #   HTTP propagation handler, health-probe
   ProductCatalogService/      # MongoDB (2 replicas) + Redis cache-aside (Phase 4)
   InventoryService/           # PostgreSQL + saga consumer (Phase 4)
   OrderService/               # SQL Server + saga publisher/consumer (Phase 4)

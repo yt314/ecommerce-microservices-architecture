@@ -1,8 +1,16 @@
 using MongoDB.Driver;
 using ProductCatalogService.Data;
+using Serilog;
+using Shared.Observability;
 using StackExchange.Redis;
 
+// docker-compose healthcheck entrypoint: probe /health and exit (no web host).
+ObservabilityExtensions.RunHealthProbeIfRequested(args);
+
 var builder = WebApplication.CreateBuilder(args);
+
+// Phase 5: structured logging to console + Seq.
+builder.AddObservability("ProductCatalogService");
 
 builder.Services.AddControllers();
 builder.Services.AddEndpointsApiExplorer();
@@ -26,6 +34,9 @@ builder.Services.AddScoped(sp => sp.GetRequiredService<IMongoClient>().GetDataba
 builder.Services.AddScoped<ProductRepository>();
 
 var app = builder.Build();
+
+app.UseCorrelationId();
+app.UseSerilogRequestLogging();
 
 // Stamp every response with the container/host that served it. With multiple
 // replicas behind the load balancer, this header reveals which instance answered.

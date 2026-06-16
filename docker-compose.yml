@@ -94,6 +94,19 @@ services:
     volumes:
       - rabbitmq-data:/var/lib/rabbitmq
 
+  # Phase 5: Seq log aggregator. Every service ships structured Serilog events
+  # here; browse and filter them (e.g. by CorrelationId) at http://localhost:5341.
+  # Inside the compose network the services log to http://seq (port 80).
+  seq:
+    image: datalust/seq:2024
+    container_name: ecommerce-seq
+    environment:
+      ACCEPT_EULA: "Y"
+    ports:
+      - "5341:80"     # Seq UI + ingestion: http://localhost:5341
+    volumes:
+      - seq-data:/data
+
   # ----------------------- Backend services (internal only) -----------------------
 
   # NOTE: no container_name and no host ports, so it can be scaled to N replicas.
@@ -107,11 +120,20 @@ services:
       Mongo__Database: "ProductCatalog"
       # Cache-aside read cache in Redis logical DB 1 (Notification uses DB 0).
       Redis__ConnectionString: "redis:6379,defaultDatabase=1"
+      Seq__ServerUrl: "http://seq"
     depends_on:
       mongo:
         condition: service_healthy
       redis:
         condition: service_healthy
+      seq:
+        condition: service_started
+    healthcheck:
+      test: ["CMD", "dotnet", "ProductCatalogService.dll", "--healthcheck"]
+      interval: 30s
+      timeout: 10s
+      retries: 5
+      start_period: 40s
     deploy:
       replicas: 2
 
@@ -135,11 +157,20 @@ services:
       RabbitMq__Host: "rabbitmq"
       RabbitMq__Username: "guest"
       RabbitMq__Password: "guest"
+      Seq__ServerUrl: "http://seq"
     depends_on:
       postgres:
         condition: service_healthy
       rabbitmq:
         condition: service_healthy
+      seq:
+        condition: service_started
+    healthcheck:
+      test: ["CMD", "dotnet", "InventoryService.dll", "--healthcheck"]
+      interval: 30s
+      timeout: 10s
+      retries: 5
+      start_period: 40s
 
   order:
     build:
@@ -155,6 +186,7 @@ services:
       RabbitMq__Host: "rabbitmq"
       RabbitMq__Username: "guest"
       RabbitMq__Password: "guest"
+      Seq__ServerUrl: "http://seq"
     depends_on:
       sqlserver:
         condition: service_healthy
@@ -162,6 +194,14 @@ services:
         condition: service_started
       rabbitmq:
         condition: service_healthy
+      seq:
+        condition: service_started
+    healthcheck:
+      test: ["CMD", "dotnet", "OrderService.dll", "--healthcheck"]
+      interval: 30s
+      timeout: 10s
+      retries: 5
+      start_period: 40s
 
   notification:
     build:
@@ -175,11 +215,20 @@ services:
       RabbitMq__Host: "rabbitmq"
       RabbitMq__Username: "guest"
       RabbitMq__Password: "guest"
+      Seq__ServerUrl: "http://seq"
     depends_on:
       redis:
         condition: service_healthy
       rabbitmq:
         condition: service_healthy
+      seq:
+        condition: service_started
+    healthcheck:
+      test: ["CMD", "dotnet", "NotificationService.dll", "--healthcheck"]
+      interval: 30s
+      timeout: 10s
+      retries: 5
+      start_period: 40s
 
   # ----------------------- BFF (internal, reached via gateway /bff) -----------------------
 
@@ -192,11 +241,20 @@ services:
       ASPNETCORE_ENVIRONMENT: "Development"
       Services__Order: "http://order:8080"
       Services__ProductCatalog: "http://catalog-lb:80"
+      Seq__ServerUrl: "http://seq"
     depends_on:
       order:
         condition: service_started
       catalog-lb:
         condition: service_started
+      seq:
+        condition: service_started
+    healthcheck:
+      test: ["CMD", "dotnet", "WebBffService.dll", "--healthcheck"]
+      interval: 30s
+      timeout: 10s
+      retries: 5
+      start_period: 40s
 
   # ----------------------- API Gateway (the ONLY exposed app entry) -----------------------
 
@@ -205,6 +263,9 @@ services:
       context: ./src/ApiGateway
       dockerfile: Dockerfile
     container_name: ecommerce-apigateway
+    environment:
+      ASPNETCORE_ENVIRONMENT: "Development"
+      Seq__ServerUrl: "http://seq"
     ports:
       - "8080:8080"
     depends_on:
@@ -218,6 +279,14 @@ services:
         condition: service_started
       webbff:
         condition: service_started
+      seq:
+        condition: service_started
+    healthcheck:
+      test: ["CMD", "dotnet", "ApiGateway.dll", "--healthcheck"]
+      interval: 30s
+      timeout: 10s
+      retries: 5
+      start_period: 40s
 
 volumes:
   mongo-data:
@@ -225,3 +294,4 @@ volumes:
   mssql-data:
   redis-data:
   rabbitmq-data:
+  seq-data:

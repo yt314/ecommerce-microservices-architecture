@@ -15,6 +15,8 @@
   <ItemGroup>
     <!-- Shared RabbitMQ contracts + publish/consume helpers. -->
     <ProjectReference Include="../Shared.Messaging/Shared.Messaging.csproj" />
+    <!-- Phase 5: Serilog/Seq logging, correlation middleware + HTTP propagation. -->
+    <ProjectReference Include="../Shared.Observability/Shared.Observability.csproj" />
   </ItemGroup>
 
 </Project>

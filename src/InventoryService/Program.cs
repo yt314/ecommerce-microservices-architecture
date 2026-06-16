@@ -1,9 +1,17 @@
 using InventoryService.Data;
 using InventoryService.Services;
 using Microsoft.EntityFrameworkCore;
+using Serilog;
 using Shared.Messaging;
+using Shared.Observability;
+
+// docker-compose healthcheck entrypoint: probe /health and exit (no web host).
+ObservabilityExtensions.RunHealthProbeIfRequested(args);
 
 var builder = WebApplication.CreateBuilder(args);
+
+// Phase 5: structured logging to console + Seq.
+builder.AddObservability("InventoryService");
 
 builder.Services.AddControllers();
 builder.Services.AddEndpointsApiExplorer();
@@ -22,6 +30,9 @@ var app = builder.Build();
 
 // Create the schema on startup, retrying while PostgreSQL finishes booting.
 await InitializeDatabaseAsync(app);
+
+app.UseCorrelationId();
+app.UseSerilogRequestLogging();
 
 app.UseSwagger();
 app.UseSwaggerUI(o =>

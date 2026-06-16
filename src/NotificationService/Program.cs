@@ -1,8 +1,16 @@
 using NotificationService.Data;
+using Serilog;
 using Shared.Messaging;
+using Shared.Observability;
 using StackExchange.Redis;
 
+// docker-compose healthcheck entrypoint: probe /health and exit (no web host).
+ObservabilityExtensions.RunHealthProbeIfRequested(args);
+
 var builder = WebApplication.CreateBuilder(args);
+
+// Phase 5: structured logging to console + Seq.
+builder.AddObservability("NotificationService");
 
 builder.Services.AddControllers();
 builder.Services.AddEndpointsApiExplorer();
@@ -21,6 +29,9 @@ builder.Services.AddSingleton<IConnectionMultiplexer>(_ => ConnectionMultiplexer
 builder.Services.AddScoped<NotificationStore>();
 
 var app = builder.Build();
+
+app.UseCorrelationId();
+app.UseSerilogRequestLogging();
 
 app.UseSwagger();
 app.UseSwaggerUI(o =>

@@ -27,12 +27,19 @@ public class EventPublisher
 
         var body = JsonSerializer.SerializeToUtf8Bytes(message);
 
+        // Carry the ambient correlation id with the message so the saga can be
+        // traced across the broker. RabbitMQ's native CorrelationId property is
+        // the natural place for it; the consumer reads it back on the other side.
+        var correlationId = CorrelationContext.Current ?? Guid.NewGuid().ToString();
+
         var props = channel.CreateBasicProperties();
         props.Persistent = true;                 // survive a broker restart (with durable queues)
         props.ContentType = "application/json";
         props.MessageId = Guid.NewGuid().ToString();
+        props.CorrelationId = correlationId;
 
         channel.BasicPublish(EventBusConstants.Exchange, routingKey, props, body);
-        _logger.LogInformation("PUBLISH [{RoutingKey}] {Payload}", routingKey, JsonSerializer.Serialize(message));
+        _logger.LogInformation("PUBLISH [{RoutingKey}] CorrelationId={CorrelationId} {Payload}",
+            routingKey, correlationId, JsonSerializer.Serialize(message));
     }
 }

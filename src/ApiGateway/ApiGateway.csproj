@@ -11,4 +11,9 @@
     <PackageReference Include="Yarp.ReverseProxy" Version="2.2.0" />
   </ItemGroup>
 
+  <ItemGroup>
+    <!-- Phase 5: Serilog/Seq logging + correlation at the gateway boundary. -->
+    <ProjectReference Include="../Shared.Observability/Shared.Observability.csproj" />
+  </ItemGroup>
+
 </Project>
