@@ -2,9 +2,17 @@ using Microsoft.EntityFrameworkCore;
 using OrderService.Clients;
 using OrderService.Data;
 using OrderService.Services;
+using Serilog;
 using Shared.Messaging;
+using Shared.Observability;
+
+// docker-compose healthcheck entrypoint: probe /health and exit (no web host).
+ObservabilityExtensions.RunHealthProbeIfRequested(args);
 
 var builder = WebApplication.CreateBuilder(args);
+
+// Phase 5: structured logging to console + Seq.
+builder.AddObservability("OrderService");
 
 builder.Services.AddControllers();
 builder.Services.AddEndpointsApiExplorer();
@@ -15,9 +23,12 @@ var connectionString = builder.Configuration.GetConnectionString("Default");
 builder.Services.AddDbContext<OrderDbContext>(o => o.UseSqlServer(connectionString));
 
 // Product validation stays synchronous (fast). Inventory + notification are now
-// event-driven, so those HTTP clients are gone.
+// event-driven, so those HTTP clients are gone. The propagation handler carries
+// the correlation id onto this outgoing call so the catalog logs the same id.
+builder.Services.AddTransient<CorrelationPropagationHandler>();
 builder.Services.AddHttpClient<ProductCatalogClient>(c =>
-    c.BaseAddress = new Uri(builder.Configuration["Services:ProductCatalog"] ?? "http://localhost:8081"));
+    c.BaseAddress = new Uri(builder.Configuration["Services:ProductCatalog"] ?? "http://localhost:8081"))
+    .AddHttpMessageHandler<CorrelationPropagationHandler>();
 
 // RabbitMQ: connection + publisher, plus the saga consumer (inventory results).
 builder.Services.AddRabbitMqMessaging();
@@ -28,6 +39,11 @@ builder.Services.AddScoped<OrderProcessor>();
 var app = builder.Build();
 
 await InitializeDatabaseAsync(app);
+
+// Correlation must be first so its id is on LogContext for every later log,
+// including the Serilog request-completion log.
+app.UseCorrelationId();
+app.UseSerilogRequestLogging();
 
 app.UseSwagger();
 app.UseSwaggerUI(o =>

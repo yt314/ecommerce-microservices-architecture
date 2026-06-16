@@ -15,4 +15,9 @@
     <PackageReference Include="Swashbuckle.AspNetCore" Version="6.6.2" />
   </ItemGroup>
 
+  <ItemGroup>
+    <!-- Phase 5: Serilog/Seq logging + correlation. -->
+    <ProjectReference Include="../Shared.Observability/Shared.Observability.csproj" />
+  </ItemGroup>
+
 </Project>

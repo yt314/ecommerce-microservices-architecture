@@ -54,8 +54,26 @@ public abstract class RabbitMqConsumerBase : BackgroundService
         {
             var routingKey = ea.RoutingKey;
             var body = Encoding.UTF8.GetString(ea.Body.ToArray());
+
+            // Recover the correlation id the publisher attached, so this hop's
+            // logs — and any event this handler publishes — keep the same id.
+            var correlationId = string.IsNullOrWhiteSpace(ea.BasicProperties?.CorrelationId)
+                ? Guid.NewGuid().ToString()
+                : ea.BasicProperties!.CorrelationId;
+            CorrelationContext.Current = correlationId;
+
+            // A BeginScope key/value pair surfaces as a structured Serilog property
+            // (CorrelationId / MessageType) on every log written while handling.
+            using var logScope = _logger.BeginScope(new Dictionary<string, object>
+            {
+                ["CorrelationId"] = correlationId,
+                ["MessageType"] = routingKey
+            });
+
             try
             {
+                _logger.LogInformation("CONSUME [{RoutingKey}] on {Queue} CorrelationId={CorrelationId}.",
+                    routingKey, QueueName, correlationId);
                 using var scope = _scopeFactory.CreateScope();
                 await HandleAsync(routingKey, body, scope.ServiceProvider, stoppingToken);
                 _channel!.BasicAck(ea.DeliveryTag, multiple: false);
