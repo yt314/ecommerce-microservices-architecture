@@ -1,0 +1,93 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1200" height="560" viewBox="0 0 1200 560" role="img" aria-label="RabbitMQ management — ecommerce.events topic exchange and durable queues">
+  <defs>
+    <style>
+      .ui   { font: 13px 'Segoe UI', system-ui, sans-serif; }
+      .uib  { font: 600 13px 'Segoe UI', system-ui, sans-serif; }
+      .mono { font: 12.5px 'Cascadia Code','Consolas',monospace; }
+      .h    { font: 700 17px 'Segoe UI', system-ui, sans-serif; }
+      .lbl  { font: 600 11px 'Segoe UI', system-ui, sans-serif; fill:#7a8794; letter-spacing:.5px; }
+    </style>
+  </defs>
+
+  <!-- page -->
+  <rect width="1200" height="560" rx="12" fill="#f4f6f8"/>
+
+  <!-- top bar (RabbitMQ orange) -->
+  <rect x="0" y="0" width="1200" height="52" rx="12" fill="#ff6600"/>
+  <rect x="0" y="30" width="1200" height="22" fill="#ff6600"/>
+  <text x="24" y="33" class="h" fill="#ffffff">RabbitMQ</text>
+  <text x="132" y="33" class="ui" fill="#ffe4cf">Management  ·  http://localhost:15672  ·  virtual host: /</text>
+  <text x="1176" y="33" class="ui" fill="#ffe4cf" text-anchor="end">guest</text>
+
+  <!-- ===== Exchange card ===== -->
+  <text x="24" y="86" class="lbl">EXCHANGE</text>
+  <rect x="24" y="96" width="1152" height="70" rx="10" fill="#ffffff" stroke="#e2e7eb"/>
+  <rect x="24" y="96" width="6" height="70" rx="3" fill="#8A2BE2"/>
+  <text x="48" y="126" class="mono" fill="#1f2a33" font-size="15">ecommerce.events</text>
+  <rect x="240" y="112" width="60" height="22" rx="11" fill="#efe1ff"/><text x="270" y="127" class="uib" fill="#6b21a8" text-anchor="middle">topic</text>
+  <rect x="312" y="112" width="66" height="22" rx="11" fill="#e2f5e9"/><text x="345" y="127" class="uib" fill="#1a7f45" text-anchor="middle">durable</text>
+  <text x="48" y="150" class="ui" fill="#7a8794">Publishers stamp <tspan class="mono" fill="#6b21a8">BasicProperties.CorrelationId</tspan> on every message · messages persistent</text>
+  <text x="1152" y="126" class="ui" fill="#7a8794" text-anchor="end">in 18/s</text>
+  <text x="1152" y="150" class="ui" fill="#7a8794" text-anchor="end">out 18/s</text>
+
+  <!-- ===== Queues table ===== -->
+  <text x="24" y="196" class="lbl">QUEUES</text>
+  <rect x="24" y="206" width="1152" height="250" rx="10" fill="#ffffff" stroke="#e2e7eb"/>
+
+  <!-- header row -->
+  <text x="48"  y="232" class="uib" fill="#5f6b75">Name</text>
+  <text x="360" y="232" class="uib" fill="#5f6b75">Bound routing keys</text>
+  <text x="792" y="232" class="uib" fill="#5f6b75">Features</text>
+  <text x="980" y="232" class="uib" fill="#5f6b75">Ready</text>
+  <text x="1080" y="232" class="uib" fill="#5f6b75">Ack /s</text>
+  <line x1="40" y1="244" x2="1160" y2="244" stroke="#eceff2"/>
+
+  <!-- row 1 -->
+  <text x="48"  y="278" class="mono" fill="#1f2a33">inventory-events</text>
+  <text x="360" y="278" class="mono" fill="#b45309">order.placed</text>
+  <rect x="792" y="264" width="46" height="20" rx="10" fill="#eef1f4"/><text x="815" y="278" class="ui" fill="#5f6b75" text-anchor="middle">D</text>
+  <rect x="844" y="264" width="86" height="20" rx="10" fill="#eef1f4"/><text x="887" y="278" class="ui" fill="#5f6b75" text-anchor="middle">prefetch=1</text>
+  <rect x="972" y="266" width="30" height="20" rx="10" fill="#e2f5e9"/><text x="987" y="280" class="uib" fill="#1a7f45" text-anchor="middle">0</text>
+  <text x="1096" y="278" class="mono" fill="#1f2a33">6.0</text>
+  <line x1="40" y1="298" x2="1160" y2="298" stroke="#f2f4f6"/>
+
+  <!-- row 2 -->
+  <text x="48"  y="332" class="mono" fill="#1f2a33">order-events</text>
+  <text x="360" y="332" class="mono" fill="#b45309">inventory.reserved · inventory.rejected</text>
+  <rect x="792" y="318" width="46" height="20" rx="10" fill="#eef1f4"/><text x="815" y="332" class="ui" fill="#5f6b75" text-anchor="middle">D</text>
+  <rect x="844" y="318" width="86" height="20" rx="10" fill="#eef1f4"/><text x="887" y="332" class="ui" fill="#5f6b75" text-anchor="middle">prefetch=1</text>
+  <rect x="972" y="320" width="30" height="20" rx="10" fill="#e2f5e9"/><text x="987" y="334" class="uib" fill="#1a7f45" text-anchor="middle">0</text>
+  <text x="1096" y="332" class="mono" fill="#1f2a33">6.0</text>
+  <line x1="40" y1="352" x2="1160" y2="352" stroke="#f2f4f6"/>
+
+  <!-- row 3 -->
+  <text x="48"  y="386" class="mono" fill="#1f2a33">notification-events</text>
+  <text x="360" y="386" class="mono" fill="#b45309">order.confirmed · order.rejected</text>
+  <rect x="792" y="372" width="46" height="20" rx="10" fill="#eef1f4"/><text x="815" y="386" class="ui" fill="#5f6b75" text-anchor="middle">D</text>
+  <rect x="844" y="372" width="86" height="20" rx="10" fill="#eef1f4"/><text x="887" y="386" class="ui" fill="#5f6b75" text-anchor="middle">prefetch=1</text>
+  <rect x="972" y="374" width="30" height="20" rx="10" fill="#e2f5e9"/><text x="987" y="388" class="uib" fill="#1a7f45" text-anchor="middle">0</text>
+  <text x="1096" y="386" class="mono" fill="#1f2a33">6.0</text>
+  <line x1="40" y1="406" x2="1160" y2="406" stroke="#f2f4f6"/>
+
+  <!-- footer note in table -->
+  <text x="48" y="436" class="ui" fill="#9aa5ae"><tspan class="uib" fill="#5f6b75">D</tspan> = durable   ·   Ready 0 = all messages consumed   ·   each consumer processes one message at a time</text>
+
+  <!-- ===== mini topology ===== -->
+  <text x="24" y="490" class="lbl">FLOW</text>
+  <g class="ui" fill="#3a4750">
+    <rect x="24"  y="500" width="150" height="34" rx="8" fill="#fff" stroke="#e2e7eb"/><text x="99"  y="522" text-anchor="middle" class="uib">OrderService</text>
+    <rect x="360" y="500" width="180" height="34" rx="8" fill="#f3e8ff" stroke="#d8b4fe"/><text x="450" y="522" text-anchor="middle" class="uib" fill="#6b21a8">ecommerce.events</text>
+    <rect x="726" y="500" width="150" height="34" rx="8" fill="#fff" stroke="#e2e7eb"/><text x="801" y="522" text-anchor="middle" class="uib">InventoryService</text>
+    <rect x="1000" y="500" width="176" height="34" rx="8" fill="#fff" stroke="#e2e7eb"/><text x="1088" y="522" text-anchor="middle" class="uib">NotificationService</text>
+  </g>
+  <g stroke="#b98be0" stroke-width="2" fill="none">
+    <path d="M174 517 L360 517" marker-end="url(#a)"/>
+    <path d="M540 517 L726 517" marker-end="url(#a)"/>
+    <path d="M540 517 L1000 517" marker-end="url(#a)" opacity="0.5"/>
+  </g>
+  <defs>
+    <marker id="a" markerWidth="8" markerHeight="8" refX="6" refY="3" orient="auto">
+      <path d="M0 0 L6 3 L0 6 z" fill="#b98be0"/>
+    </marker>
+  </defs>
+</svg>

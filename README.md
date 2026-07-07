@@ -332,6 +332,11 @@ sequenceDiagram
     end
 ```
 
+The **RabbitMQ management UI** (http://localhost:15672, guest/guest) shows the
+`ecommerce.events` topic exchange fanning out to the three durable queues:
+
+![RabbitMQ management — ecommerce.events exchange and durable queues](docs/images/rabbitmq-topology.svg)
+
 - **Broker:** RabbitMQ, durable topic exchange `ecommerce.events`, durable queues,
   persistent messages, **management UI at http://localhost:15672 (guest/guest)**.
 - **Idempotency:** Inventory has a `ProcessedOrders` table; OrderService only acts
@@ -462,6 +467,8 @@ curl -X POST http://localhost:8080/orders/api/orders \
 3. You see one timeline spanning **ApiGateway → OrderService → InventoryService →
    OrderService → NotificationService**, including the `PUBLISH` / `CONSUME` events
    that crossed RabbitMQ — all sharing that one id.
+
+![Seq — one order traced end-to-end by a single CorrelationId](docs/images/seq-trace.svg)
 
 You can also see it on the console:
 
