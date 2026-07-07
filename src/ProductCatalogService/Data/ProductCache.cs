@@ -4,15 +4,6 @@ using StackExchange.Redis;
 
 namespace ProductCatalogService.Data;
 
-/// <summary>
-/// Cache-aside layer over <see cref="ProductRepository"/> for single-product reads.
-///
-///   read  : try Redis → HIT returns cached; MISS reads MongoDB then populates Redis.
-///   update: caller invalidates (deletes) the key so the next read repopulates.
-///
-/// Keys are "catalog:product:{id}" and live in Redis logical DB 1, completely
-/// separate from NotificationService (which uses DB 0).
-/// </summary>
 public class ProductCache
 {
     private readonly IConnectionMultiplexer _redis;

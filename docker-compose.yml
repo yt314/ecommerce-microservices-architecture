@@ -1,18 +1,5 @@
-# Phase 3 — API Gateway + BFF + Load Balancing.
-# ONE command runs everything. The API GATEWAY (port 8080) is the ONLY app entry
-# point exposed to the host; all other services are internal.
-#
-# Before running, publish all services on the host (NuGet restore fails inside
-# Docker on this machine), then bring everything up:
-#   ./publish-all.sh        (or  ./publish-all.ps1  on PowerShell)
-#   docker compose up --build
-#
-# Client -> apigateway (YARP) -> { catalog-lb -> productcatalog x2, inventory,
-#                                  order, notification, webbff }
+
 services:
-
-  # ----------------------- Databases (host ports kept for dev) -----------------------
-
   mongo:
     image: mongo:7
     container_name: ecommerce-mongo
@@ -177,6 +164,8 @@ services:
       context: ./src/OrderService
       dockerfile: Dockerfile
     container_name: ecommerce-order
+    ports:
+      - "8083:8080"   # TEMP: direct access for Swagger UI browsing — remove before submission
     environment:
       ASPNETCORE_ENVIRONMENT: "Development"
       ConnectionStrings__Default: "Server=sqlserver,1433;Database=OrderDb;User Id=sa;Password=Your_password123;TrustServerCertificate=True;Encrypt=False"
