@@ -1,7 +1,50 @@
+<div align="center">
+
+![E-Commerce Order System — Monolith to Microservices](docs/images/banner.svg)
+
 # E-Commerce Order System — Monolith → Microservices
 
-A course project that evolves an e-commerce order system from a monolith into
-production-style microservices, phase by phase.
+**A course project that evolves an e-commerce order system from a monolith into
+production-style microservices, phase by phase.**
+
+[![.NET](https://img.shields.io/badge/.NET-8.0-512BD4?logo=dotnet&logoColor=white)](https://dotnet.microsoft.com/)
+[![C#](https://img.shields.io/badge/C%23-12-239120?logo=csharp&logoColor=white)](https://learn.microsoft.com/dotnet/csharp/)
+[![Docker](https://img.shields.io/badge/Docker-Compose-2496ED?logo=docker&logoColor=white)](https://www.docker.com/)
+[![RabbitMQ](https://img.shields.io/badge/RabbitMQ-Saga-FF6600?logo=rabbitmq&logoColor=white)](https://www.rabbitmq.com/)
+[![Architecture](https://img.shields.io/badge/Architecture-Microservices-8A2BE2)](docs/microservices-architecture.md)
+[![Status](https://img.shields.io/badge/Status-Phases_1--5_done-brightgreen)](#phase-roadmap)
+
+<br/>
+
+**Data stores &amp; infra**  
+![MongoDB](https://img.shields.io/badge/MongoDB-document-47A248?logo=mongodb&logoColor=white)
+![PostgreSQL](https://img.shields.io/badge/PostgreSQL-relational-4169E1?logo=postgresql&logoColor=white)
+![SQL Server](https://img.shields.io/badge/SQL_Server-relational-CC2927?logo=microsoftsqlserver&logoColor=white)
+![Redis](https://img.shields.io/badge/Redis-key--value_+_cache-DC382D?logo=redis&logoColor=white)
+![Nginx](https://img.shields.io/badge/Nginx-load_balancer-009639?logo=nginx&logoColor=white)
+![YARP](https://img.shields.io/badge/YARP-API_gateway-512BD4)
+![Serilog](https://img.shields.io/badge/Serilog-%E2%86%92_Seq-1E90FF)
+
+</div>
+
+---
+
+## Table of Contents
+
+- [Phase roadmap](#phase-roadmap)
+- [System at a glance](#system-at-a-glance)
+- [Phase 1 — Monolith (baseline, preserved)](#phase-1--monolith-baseline-preserved)
+- [Repository structure](#repository-structure)
+- [Phase 2 — Microservices](#phase-2--microservices-preserved-now-behind-the-gateway)
+- [Phase 3 — API Gateway, BFF & Load Balancing](#phase-3--api-gateway-bff--load-balancing-current)
+- [Prerequisites](#prerequisites)
+- [Phase 4 — Async Messaging, Saga & Caching](#phase-4--async-messaging-saga--caching-done)
+- [Phase 5 — Monitoring & Observability](#phase-5--monitoring--observability-current)
+- [Author](#-author)
+
+---
+
+## Phase roadmap
 
 - **Phase 1 (done):** a single .NET 8 WebAPI monolith + one SQL Server database.
 - **Phase 2 (done):** split into **4 microservices** with **database-per-service**
@@ -17,6 +60,71 @@ production-style microservices, phase by phase.
   end-to-end across HTTP **and** the RabbitMQ saga.
 
 > CI/CD and the bonus phases are out of scope for now.
+
+---
+
+## System at a glance
+
+The current system (Phases 3–5): one **API Gateway** as the only public entry
+point, a **BFF** for aggregation, a load-balanced **catalog**, four services each
+owning their **own database**, an async **RabbitMQ saga**, and **Seq** collecting
+correlated logs from every hop.
+
+```mermaid
+flowchart TB
+    Client(["Client"])
+
+    subgraph Edge["Public edge — :8080"]
+        GW["API Gateway (YARP)"]
+    end
+
+    BFF["WebBffService (BFF)<br/>aggregation"]
+
+    subgraph CatalogLB["Catalog · load balanced"]
+        LB["catalog-lb (Nginx)"]
+        PC1["productcatalog #1"]
+        PC2["productcatalog #2"]
+        LB --> PC1
+        LB --> PC2
+    end
+
+    INV["InventoryService"]
+    ORD["OrderService"]
+    NOT["NotificationService"]
+
+    EX{{"RabbitMQ<br/>ecommerce.events"}}
+    SEQ[/"Seq · logs<br/>:5341"/]
+
+    Client -->|all traffic| GW
+    GW -->|/catalog| LB
+    GW -->|/inventory| INV
+    GW -->|/orders| ORD
+    GW -->|/notifications| NOT
+    GW -->|/bff| BFF
+    BFF -->|order| ORD
+    BFF -->|products| LB
+
+    ORD -. order.placed .-> EX
+    EX -. order.placed .-> INV
+    INV -. inventory.reserved/rejected .-> EX
+    EX -. inventory.* .-> ORD
+    ORD -. order.confirmed/rejected .-> EX
+    EX -. order.* .-> NOT
+
+    PC1 --> M[("MongoDB")]
+    PC2 --> M
+    INV --> P[("PostgreSQL")]
+    ORD --> S[("SQL Server")]
+    NOT --> R[("Redis")]
+
+    GW -.->|logs| SEQ
+    ORD -.->|logs| SEQ
+    INV -.->|logs| SEQ
+    NOT -.->|logs| SEQ
+```
+
+> **Legend:** solid arrows = synchronous HTTP · dotted arrows = async RabbitMQ
+> events · dashed → Seq = structured logs carrying a shared `X-Correlation-ID`.
 
 ---
 
@@ -196,10 +304,32 @@ docker start project-ai-productcatalog-1
 Order placement is now **asynchronous**. `POST /orders` returns a **Pending**
 order immediately; the final status is decided by a **RabbitMQ choreography saga**.
 
-```
-POST /orders → Pending → [OrderPlaced] → Inventory reserves → [InventoryReserved]
-            → Order Confirmed → [OrderConfirmed] → Notification records "Confirmed"
-out of stock → [InventoryRejected] → Order Rejected → [OrderRejected] → "Rejected"
+```mermaid
+sequenceDiagram
+    autonumber
+    participant C as Client
+    participant O as OrderService
+    participant Q as RabbitMQ
+    participant I as InventoryService
+    participant N as NotificationService
+
+    C->>O: POST /orders
+    O-->>C: 202 · order = Pending
+    O->>Q: order.placed
+    Q->>I: order.placed
+    alt stock available
+        I->>Q: inventory.reserved
+        Q->>O: inventory.reserved
+        O->>Q: order.confirmed
+        Q->>N: order.confirmed
+        N->>N: record "Confirmed"
+    else out of stock
+        I->>Q: inventory.rejected
+        Q->>O: inventory.rejected
+        O->>Q: order.rejected
+        Q->>N: order.rejected
+        N->>N: record "Rejected" (inventory unchanged)
+    end
 ```
 
 - **Broker:** RabbitMQ, durable topic exchange `ecommerce.events`, durable queues,
@@ -299,13 +429,24 @@ journey together — including across the message broker.
 
 ### The correlation flow
 
+```mermaid
+flowchart LR
+    C(["Client"]) -->|"X-Correlation-ID?"| GW["API Gateway<br/>creates id if absent"]
+    GW -->|same id| O["OrderService<br/>PUBLISH order.placed"]
+    O -->|same id via broker| I["InventoryService<br/>PUBLISH inventory.*"]
+    I -->|same id via broker| O2["OrderService<br/>PUBLISH order.*"]
+    O2 -->|same id via broker| N["NotificationService<br/>record + log"]
+
+    GW -.-> SEQ[/"Seq"/]
+    O -.-> SEQ
+    I -.-> SEQ
+    O2 -.-> SEQ
+    N -.-> SEQ
 ```
-Client ─[X-Correlation-ID?]→ API Gateway (creates id if absent, forwards it)
-  → OrderService  (Pending, PUBLISH order.placed  + CorrelationId)
-     → RabbitMQ → InventoryService (reserve, PUBLISH inventory.reserved/rejected + same CorrelationId)
-        → RabbitMQ → OrderService  (Confirm/Reject, PUBLISH order.confirmed/rejected + same CorrelationId)
-           → RabbitMQ → NotificationService (records + logs with the same CorrelationId)
-```
+
+> The **same** correlation id rides HTTP headers **and** the RabbitMQ message's
+> native `BasicProperties.CorrelationId`, so one order is a single searchable
+> timeline in Seq — across every service and every broker hop.
 
 ### Trace one order in Seq
 

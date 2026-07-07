@@ -1,0 +1,93 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1200" height="360" viewBox="0 0 1200 360" role="img" aria-label="E-Commerce Order System — Monolith to Microservices">
+  <defs>
+    <linearGradient id="bg" x1="0" y1="0" x2="1" y2="1">
+      <stop offset="0" stop-color="#0f172a"/>
+      <stop offset="0.55" stop-color="#1e293b"/>
+      <stop offset="1" stop-color="#312e81"/>
+    </linearGradient>
+    <linearGradient id="accent" x1="0" y1="0" x2="1" y2="0">
+      <stop offset="0" stop-color="#38bdf8"/>
+      <stop offset="1" stop-color="#a78bfa"/>
+    </linearGradient>
+    <filter id="soft" x="-20%" y="-20%" width="140%" height="140%">
+      <feGaussianBlur stdDeviation="6" result="b"/>
+      <feMerge><feMergeNode in="b"/><feMergeNode in="SourceGraphic"/></feMerge>
+    </filter>
+    <style>
+      .title { font: 700 46px 'Segoe UI', system-ui, sans-serif; fill: #f8fafc; }
+      .sub   { font: 400 21px 'Segoe UI', system-ui, sans-serif; fill: #cbd5e1; }
+      .node  { font: 600 15px 'Segoe UI', system-ui, sans-serif; fill: #e2e8f0; }
+      .db    { font: 400 12px 'Segoe UI', system-ui, sans-serif; fill: #94a3b8; }
+      .chip  { fill: #1e293b; stroke: #334155; stroke-width: 1.5; }
+    </style>
+  </defs>
+
+  <rect x="0" y="0" width="1200" height="360" rx="20" fill="url(#bg)"/>
+  <rect x="0" y="0" width="1200" height="6" fill="url(#accent)"/>
+
+  <!-- Title block -->
+  <text x="64" y="118" class="title">E-Commerce Order System</text>
+  <text x="64" y="158" class="sub">Monolith &#8594; Microservices &#183; .NET 8 &#183; Docker &#183; RabbitMQ Saga</text>
+
+  <!-- Phase pills -->
+  <g transform="translate(64,196)">
+    <g>
+      <rect class="chip" x="0"   y="0" width="118" height="34" rx="17"/>
+      <text x="59"  y="22" text-anchor="middle" class="node" font-size="14">Monolith</text>
+    </g>
+    <g>
+      <rect class="chip" x="132" y="0" width="150" height="34" rx="17"/>
+      <text x="207" y="22" text-anchor="middle" class="node" font-size="14">Microservices</text>
+    </g>
+    <g>
+      <rect class="chip" x="296" y="0" width="150" height="34" rx="17"/>
+      <text x="371" y="22" text-anchor="middle" class="node" font-size="14">Gateway + BFF</text>
+    </g>
+    <g>
+      <rect class="chip" x="460" y="0" width="140" height="34" rx="17"/>
+      <text x="530" y="22" text-anchor="middle" class="node" font-size="14">Saga + Cache</text>
+    </g>
+    <g>
+      <rect class="chip" x="614" y="0" width="160" height="34" rx="17"/>
+      <text x="694" y="22" text-anchor="middle" class="node" font-size="14">Observability</text>
+    </g>
+  </g>
+
+  <!-- Mini architecture on the right -->
+  <g transform="translate(770,60)" filter="url(#soft)">
+    <!-- gateway -->
+    <rect x="150" y="0" width="150" height="46" rx="10" fill="#0ea5e9" opacity="0.9"/>
+    <text x="225" y="28" text-anchor="middle" class="node" fill="#082f49">API Gateway</text>
+
+    <!-- services -->
+    <g>
+      <rect x="0"   y="110" width="120" height="44" rx="10" fill="#1e293b" stroke="#22c55e" stroke-width="2"/>
+      <text x="60"  y="130" text-anchor="middle" class="node">Catalog</text>
+      <text x="60"  y="146" text-anchor="middle" class="db">MongoDB</text>
+    </g>
+    <g>
+      <rect x="140" y="110" width="120" height="44" rx="10" fill="#1e293b" stroke="#38bdf8" stroke-width="2"/>
+      <text x="200" y="130" text-anchor="middle" class="node">Inventory</text>
+      <text x="200" y="146" text-anchor="middle" class="db">PostgreSQL</text>
+    </g>
+    <g>
+      <rect x="280" y="110" width="120" height="44" rx="10" fill="#1e293b" stroke="#f472b6" stroke-width="2"/>
+      <text x="340" y="130" text-anchor="middle" class="node">Order</text>
+      <text x="340" y="146" text-anchor="middle" class="db">SQL Server</text>
+    </g>
+
+    <!-- bus -->
+    <rect x="0" y="210" width="400" height="40" rx="10" fill="url(#accent)" opacity="0.85"/>
+    <text x="200" y="235" text-anchor="middle" class="node" fill="#0b1220">RabbitMQ &#183; ecommerce.events</text>
+
+    <!-- connectors -->
+    <g stroke="#64748b" stroke-width="2" fill="none" opacity="0.8">
+      <path d="M225 46 L60 110"/>
+      <path d="M225 46 L200 110"/>
+      <path d="M225 46 L340 110"/>
+      <path d="M60 154 L60 210"/>
+      <path d="M200 154 L200 210"/>
+      <path d="M340 154 L340 210"/>
+    </g>
+  </g>
+</svg>
