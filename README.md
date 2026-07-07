@@ -332,10 +332,10 @@ sequenceDiagram
     end
 ```
 
-The **RabbitMQ management UI** (http://localhost:15672, guest/guest) shows the
-`ecommerce.events` topic exchange fanning out to the three durable queues:
+The **RabbitMQ management UI** (http://localhost:15672, guest/guest) — the broker
+is up with its exchanges, the three durable queues and the consumers connected:
 
-![RabbitMQ management — ecommerce.events exchange and durable queues](docs/images/rabbitmq-topology.svg)
+![RabbitMQ management — Overview: exchanges, queues and consumers](docs/images/rabbitmq-overview.png)
 
 - **Broker:** RabbitMQ, durable topic exchange `ecommerce.events`, durable queues,
   persistent messages, **management UI at http://localhost:15672 (guest/guest)**.
@@ -468,7 +468,7 @@ curl -X POST http://localhost:8080/orders/api/orders \
    OrderService → NotificationService**, including the `PUBLISH` / `CONSUME` events
    that crossed RabbitMQ — all sharing that one id.
 
-![Seq — one order traced end-to-end by a single CorrelationId](docs/images/seq-trace.svg)
+![Seq — structured logs aggregated from every service](docs/images/seq-logs.png)
 
 You can also see it on the console:
 
