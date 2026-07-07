@@ -3,7 +3,6 @@ using OrderService.Entities;
 
 namespace OrderService.Data;
 
-/// <summary>EF Core context for the Order SQL Server database.</summary>
 public class OrderDbContext : DbContext
 {
     public OrderDbContext(DbContextOptions<OrderDbContext> options) : base(options) { }

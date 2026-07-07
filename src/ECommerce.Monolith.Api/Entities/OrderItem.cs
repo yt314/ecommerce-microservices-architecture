@@ -1,10 +1,7 @@
 namespace ECommerce.Monolith.Api.Entities;
 
-/// <summary>
-/// A single line in an order. ProductName and UnitPrice are copied
-/// (snapshotted) at order time so the order stays correct even if the
-/// product is later renamed or repriced.
-/// </summary>
+// ProductName/UnitPrice are snapshotted at order time so the order stays
+// correct even if the product is later renamed or repriced.
 public class OrderItem
 {
     public int Id { get; set; }

@@ -4,11 +4,8 @@ using RabbitMQ.Client;
 
 namespace Shared.Messaging;
 
-/// <summary>
-/// Publishes events to the shared topic exchange as persistent JSON messages.
-/// A fresh channel is opened per publish (channels are not thread-safe); this is
-/// perfectly fine at the volumes of a course demo.
-/// </summary>
+// A fresh channel is opened per publish because RabbitMQ channels aren't
+// thread-safe to share across concurrent publishers.
 public class EventPublisher
 {
     private readonly RabbitMqConnection _connection;
@@ -27,9 +24,8 @@ public class EventPublisher
 
         var body = JsonSerializer.SerializeToUtf8Bytes(message);
 
-        // Carry the ambient correlation id with the message so the saga can be
-        // traced across the broker. RabbitMQ's native CorrelationId property is
-        // the natural place for it; the consumer reads it back on the other side.
+        // Stamped onto RabbitMQ's native CorrelationId property (not a custom
+        // header) so the consumer on the other side can read it back directly.
         var correlationId = CorrelationContext.Current ?? Guid.NewGuid().ToString();
 
         var props = channel.CreateBasicProperties();

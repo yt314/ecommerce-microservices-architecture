@@ -11,26 +11,23 @@ ObservabilityExtensions.RunHealthProbeIfRequested(args);
 
 var builder = WebApplication.CreateBuilder(args);
 
-// Phase 5: structured logging to console + Seq.
 builder.AddObservability("OrderService");
 
 builder.Services.AddControllers();
 builder.Services.AddEndpointsApiExplorer();
 builder.Services.AddSwaggerGen(o => o.SwaggerDoc("v1", new() { Title = "OrderService", Version = "v1" }));
 
-// EF Core + SQL Server (this service's own database).
 var connectionString = builder.Configuration.GetConnectionString("Default");
 builder.Services.AddDbContext<OrderDbContext>(o => o.UseSqlServer(connectionString));
 
-// Product validation stays synchronous (fast). Inventory + notification are now
-// event-driven, so those HTTP clients are gone. The propagation handler carries
-// the correlation id onto this outgoing call so the catalog logs the same id.
+// Product validation is the one call that stays synchronous (fast-fail on a bad
+// product id); the handler tags it with the correlation id so the catalog's
+// logs line up with this request.
 builder.Services.AddTransient<CorrelationPropagationHandler>();
 builder.Services.AddHttpClient<ProductCatalogClient>(c =>
     c.BaseAddress = new Uri(builder.Configuration["Services:ProductCatalog"] ?? "http://localhost:8081"))
     .AddHttpMessageHandler<CorrelationPropagationHandler>();
 
-// RabbitMQ: connection + publisher, plus the saga consumer (inventory results).
 builder.Services.AddRabbitMqMessaging();
 builder.Services.AddHostedService<OrderSagaConsumer>();
 

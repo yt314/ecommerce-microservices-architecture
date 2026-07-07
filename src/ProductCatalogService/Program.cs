@@ -9,26 +9,25 @@ ObservabilityExtensions.RunHealthProbeIfRequested(args);
 
 var builder = WebApplication.CreateBuilder(args);
 
-// Phase 5: structured logging to console + Seq.
 builder.AddObservability("ProductCatalogService");
 
 builder.Services.AddControllers();
 builder.Services.AddEndpointsApiExplorer();
 builder.Services.AddSwaggerGen(o => o.SwaggerDoc("v1", new() { Title = "ProductCatalogService", Version = "v1" }));
 
-// --- Redis cache-aside wiring (logical DB 1 — separate from NotificationService) ---
+// defaultDatabase=1: NotificationService's Redis usage lives in DB 0, so the
+// two don't collide on the same server.
 var redisConnection = builder.Configuration["Redis:ConnectionString"] ?? "localhost:6379,defaultDatabase=1";
 var redisOptions = ConfigurationOptions.Parse(redisConnection);
 redisOptions.AbortOnConnectFail = false;
 builder.Services.AddSingleton<IConnectionMultiplexer>(_ => ConnectionMultiplexer.Connect(redisOptions));
 builder.Services.AddScoped<ProductCache>();
 
-// --- MongoDB wiring ---
-// The connection string and database name come from configuration / env vars.
 var mongoConnection = builder.Configuration["Mongo:ConnectionString"] ?? "mongodb://localhost:27017";
 var mongoDatabase = builder.Configuration["Mongo:Database"] ?? "ProductCatalog";
 
-// IMongoClient is thread-safe and meant to be a singleton.
+// IMongoClient is thread-safe by design, so it's a singleton; the IMongoDatabase
+// below is a lightweight handle and can stay scoped.
 builder.Services.AddSingleton<IMongoClient>(_ => new MongoClient(mongoConnection));
 builder.Services.AddScoped(sp => sp.GetRequiredService<IMongoClient>().GetDatabase(mongoDatabase));
 builder.Services.AddScoped<ProductRepository>();
@@ -38,8 +37,8 @@ var app = builder.Build();
 app.UseCorrelationId();
 app.UseSerilogRequestLogging();
 
-// Stamp every response with the container/host that served it. With multiple
-// replicas behind the load balancer, this header reveals which instance answered.
+// Reveals which replica answered — needed to prove the load balancer is
+// actually spreading requests across instances.
 app.Use(async (context, next) =>
 {
     context.Response.OnStarting(() =>

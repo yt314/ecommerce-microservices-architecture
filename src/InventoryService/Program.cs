@@ -10,19 +10,16 @@ ObservabilityExtensions.RunHealthProbeIfRequested(args);
 
 var builder = WebApplication.CreateBuilder(args);
 
-// Phase 5: structured logging to console + Seq.
 builder.AddObservability("InventoryService");
 
 builder.Services.AddControllers();
 builder.Services.AddEndpointsApiExplorer();
 builder.Services.AddSwaggerGen(o => o.SwaggerDoc("v1", new() { Title = "InventoryService", Version = "v1" }));
 
-// EF Core + PostgreSQL. Connection string comes from config / env var.
 var connectionString = builder.Configuration.GetConnectionString("Default");
 builder.Services.AddDbContext<InventoryDbContext>(o => o.UseNpgsql(connectionString));
 builder.Services.AddScoped<InventoryManager>();
 
-// RabbitMQ: connection + publisher, plus the saga consumer (OrderPlaced).
 builder.Services.AddRabbitMqMessaging();
 builder.Services.AddHostedService<InventorySagaConsumer>();
 

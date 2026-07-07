@@ -2,12 +2,9 @@ using Shared.Messaging;
 
 namespace Shared.Observability;
 
-/// <summary>
-/// An HttpClient message handler that copies the ambient correlation id onto
-/// outgoing requests as X-Correlation-ID. This is how synchronous calls — such as
-/// OrderService validating a product, or the BFF aggregating order + product data —
-/// keep the same correlation id as the request that triggered them.
-/// </summary>
+// Copies the ambient correlation id onto outgoing HttpClient calls (e.g.
+// OrderService -> ProductCatalogService) so they carry the same id as the
+// request that triggered them.
 public class CorrelationPropagationHandler : DelegatingHandler
 {
     protected override Task<HttpResponseMessage> SendAsync(HttpRequestMessage request, CancellationToken cancellationToken)

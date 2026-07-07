@@ -4,11 +4,6 @@ using Microsoft.AspNetCore.Mvc;
 
 namespace ECommerce.Monolith.Api.Controllers;
 
-/// <summary>
-/// HTTP endpoints for the product catalog. Controllers are intentionally thin:
-/// they validate input (via model binding/data annotations) and translate
-/// service results into HTTP responses.
-/// </summary>
 [ApiController]
 [Route("api/products")]
 public class ProductsController : ControllerBase
@@ -17,7 +12,6 @@ public class ProductsController : ControllerBase
 
     public ProductsController(ProductService products) => _products = products;
 
-    /// <summary>Create a new product (also creates an empty inventory record).</summary>
     [HttpPost]
     public async Task<ActionResult<ProductResponse>> Create(CreateProductRequest request)
     {
@@ -25,12 +19,10 @@ public class ProductsController : ControllerBase
         return CreatedAtAction(nameof(GetById), new { id = created.Id }, created);
     }
 
-    /// <summary>List all products.</summary>
     [HttpGet]
     public async Task<ActionResult<IEnumerable<ProductResponse>>> GetAll()
         => Ok(await _products.GetAllAsync());
 
-    /// <summary>Get a single product by id.</summary>
     [HttpGet("{id:int}")]
     public async Task<ActionResult<ProductResponse>> GetById(int id)
     {
@@ -38,7 +30,6 @@ public class ProductsController : ControllerBase
         return result.Succeeded ? Ok(result.Value) : NotFound(new { error = result.Error });
     }
 
-    /// <summary>Update an existing product.</summary>
     [HttpPut("{id:int}")]
     public async Task<ActionResult<ProductResponse>> Update(int id, UpdateProductRequest request)
     {

@@ -4,15 +4,10 @@ using StackExchange.Redis;
 
 namespace NotificationService.Data;
 
-/// <summary>
-/// Stores notification records in Redis (a key-value NoSQL store).
-/// Layout:
-///   - "notification:nextid"        -> integer counter (INCR)
-///   - "notification:{id}"          -> JSON of the record
-///   - "notifications" (Redis list) -> ids in insertion order
-/// This service "sends" notifications by logging them and saving their status;
-/// no real email provider is involved (not required for the course).
-/// </summary>
+// Redis layout:
+//   "notification:nextid"        -> integer counter (INCR)
+//   "notification:{id}"          -> JSON of the record
+//   "notifications" (Redis list) -> ids in insertion order
 public class NotificationStore
 {
     private const string IdCounterKey = "notification:nextid";
@@ -27,11 +22,8 @@ public class NotificationStore
         _logger = logger;
     }
 
-    /// <summary>
-    /// Records a notification triggered by a saga event, idempotently. Uses a
-    /// Redis SET-if-not-exists on "notification:processed:{orderId}" so a duplicate
-    /// final event for the same order does not create a second notification.
-    /// </summary>
+    // SET-if-not-exists on "notification:processed:{orderId}" is the idempotency
+    // guard: a redelivered OrderConfirmed/Rejected won't create a second record.
     public async Task RecordFromEventAsync(int orderId, string customerEmail, string status, string message, DateTime createdAt)
     {
         var db = _redis.GetDatabase();

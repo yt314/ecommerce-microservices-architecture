@@ -3,10 +3,6 @@ using Shared.Messaging;
 
 namespace NotificationService.Data;
 
-/// <summary>
-/// Consumes the final order events and records a notification in Redis.
-/// Reads the "notification.order-final" queue (OrderConfirmed / OrderRejected).
-/// </summary>
 public class NotificationSagaConsumer : RabbitMqConsumerBase
 {
     public NotificationSagaConsumer(RabbitMqConnection connection, IServiceScopeFactory scopeFactory, ILogger<NotificationSagaConsumer> logger)

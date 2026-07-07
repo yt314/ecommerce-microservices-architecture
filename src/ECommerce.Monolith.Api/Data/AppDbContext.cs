@@ -3,11 +3,6 @@ using Microsoft.EntityFrameworkCore;
 
 namespace ECommerce.Monolith.Api.Data;
 
-/// <summary>
-/// The single EF Core database context for the whole monolith.
-/// In Phase 1 every table lives in one SQL Server database — this is
-/// deliberate, because the monolith baseline uses one relational store.
-/// </summary>
 public class AppDbContext : DbContext
 {
     public AppDbContext(DbContextOptions<AppDbContext> options) : base(options) { }
@@ -19,7 +14,6 @@ public class AppDbContext : DbContext
 
     protected override void OnModelCreating(ModelBuilder modelBuilder)
     {
-        // Product configuration.
         modelBuilder.Entity<Product>(p =>
         {
             p.Property(x => x.Name).IsRequired().HasMaxLength(200);
@@ -35,13 +29,11 @@ public class AppDbContext : DbContext
              .OnDelete(DeleteBehavior.Cascade);
         });
 
-        // Inventory: one row per product (enforced with a unique index).
         modelBuilder.Entity<InventoryItem>(i =>
         {
             i.HasIndex(x => x.ProductId).IsUnique();
         });
 
-        // Order configuration.
         modelBuilder.Entity<Order>(o =>
         {
             o.Property(x => x.CustomerEmail).IsRequired().HasMaxLength(256);
@@ -55,7 +47,6 @@ public class AppDbContext : DbContext
              .OnDelete(DeleteBehavior.Cascade);
         });
 
-        // Order item configuration.
         modelBuilder.Entity<OrderItem>(oi =>
         {
             oi.Property(x => x.ProductName).IsRequired().HasMaxLength(200);

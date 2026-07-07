@@ -6,14 +6,11 @@ using Shared.Messaging;
 
 namespace InventoryService.Services;
 
-/// <summary>Outcome of trying to reserve a whole order's stock.</summary>
 public record OrderReservationResult(bool Reserved, string Reason);
 
-/// <summary>
-/// Business logic for inventory: read, set (upsert), reserve and release stock.
-/// Each public method does a single SaveChanges, which PostgreSQL executes in
-/// its own transaction — so individual reserve/release operations are atomic.
-/// </summary>
+// Each public method does exactly one SaveChanges, so PostgreSQL's own
+// transaction is what makes each reserve/release atomic — no explicit
+// transaction handling needed here.
 public class InventoryManager
 {
     private readonly InventoryDbContext _db;
@@ -25,11 +22,8 @@ public class InventoryManager
         _logger = logger;
     }
 
-    /// <summary>
-    /// Saga handler for OrderPlaced: reserve ALL lines of an order atomically,
-    /// or none. Idempotent — if this OrderId was already processed, the stored
-    /// outcome is returned without changing stock again.
-    /// </summary>
+    // Reserves every line of the order or none — a partial reservation would
+    // leave the saga with no clean way to know what to compensate.
     public async Task<OrderReservationResult> ReserveForOrderAsync(int orderId, IReadOnlyList<OrderLine> items)
     {
         // Idempotency guard: have we already handled this order?
@@ -97,7 +91,6 @@ public class InventoryManager
         return item is null ? null : ToResponse(item);
     }
 
-    /// <summary>Creates the inventory row if missing, otherwise updates it.</summary>
     public async Task<InventoryResponse> UpsertAsync(string productId, UpdateInventoryRequest request)
     {
         var item = await _db.InventoryItems.FirstOrDefaultAsync(i => i.ProductId == productId);
@@ -114,10 +107,6 @@ public class InventoryManager
         return ToResponse(item);
     }
 
-    /// <summary>
-    /// Reserve stock: available goes down, reserved goes up.
-    /// Fails (Success=false) if the product has no inventory row or not enough stock.
-    /// </summary>
     public async Task<StockOperationResponse> ReserveAsync(string productId, int quantity)
     {
         var item = await _db.InventoryItems.FirstOrDefaultAsync(i => i.ProductId == productId);
@@ -134,10 +123,6 @@ public class InventoryManager
         return Ok("Reserved.", item);
     }
 
-    /// <summary>
-    /// Release a previous reservation: reserved goes down, available goes back up.
-    /// Used as a best-effort compensation if a multi-item order fails partway.
-    /// </summary>
     public async Task<StockOperationResponse> ReleaseAsync(string productId, int quantity)
     {
         var item = await _db.InventoryItems.FirstOrDefaultAsync(i => i.ProductId == productId);

@@ -5,9 +5,6 @@ using Microsoft.EntityFrameworkCore;
 
 namespace ECommerce.Monolith.Api.Services;
 
-/// <summary>
-/// Business logic for reading and updating product stock levels.
-/// </summary>
 public class InventoryService
 {
     private readonly AppDbContext _db;
@@ -25,10 +22,7 @@ public class InventoryService
             : ServiceResult<InventoryResponse>.Success(ToResponse(item));
     }
 
-    /// <summary>
-    /// Sets absolute available/reserved quantities for a product.
-    /// The product must exist; an inventory row is created if missing.
-    /// </summary>
+    // Upsert: creates the inventory row if this product doesn't have one yet.
     public async Task<ServiceResult<InventoryResponse>> UpdateAsync(int productId, UpdateInventoryRequest request)
     {
         var productExists = await _db.Products.AnyAsync(p => p.Id == productId);

@@ -3,10 +3,6 @@ using Shared.Messaging;
 
 namespace InventoryService.Services;
 
-/// <summary>
-/// Consumes OrderPlaced, reserves stock, and publishes InventoryReserved or
-/// InventoryRejected. Reads the "inventory.order-placed" queue.
-/// </summary>
 public class InventorySagaConsumer : RabbitMqConsumerBase
 {
     public InventorySagaConsumer(RabbitMqConnection connection, IServiceScopeFactory scopeFactory, ILogger<InventorySagaConsumer> logger)

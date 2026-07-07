@@ -4,13 +4,9 @@ using WebBffService.DTOs;
 
 namespace WebBffService.Controllers;
 
-/// <summary>
-/// The BFF aggregation endpoint. "Order details" is not a single backend
-/// resource — it combines the order (OrderService) with each item's current
-/// product details (ProductCatalogService) into one client-shaped response.
-/// This aggregation logic is client-specific and intentionally lives here,
-/// NOT in the gateway.
-/// </summary>
+// "Order details" isn't one backend resource — it combines OrderService and
+// ProductCatalogService into one response shaped for this client. That
+// composition logic belongs here, not in the gateway (which only routes).
 [ApiController]
 [Route("api/order-details")]
 public class OrderDetailsController : ControllerBase
@@ -27,12 +23,10 @@ public class OrderDetailsController : ControllerBase
     [HttpGet("{orderId:int}")]
     public async Task<ActionResult<OrderDetailsResponse>> Get(int orderId)
     {
-        // 1. Get the order from OrderService.
         var order = await _orders.GetOrderAsync(orderId);
         if (order is null)
             return NotFound(new { error = $"Order {orderId} was not found." });
 
-        // 2. For each line, fetch live product details from ProductCatalogService.
         var lines = new List<OrderDetailLine>();
         foreach (var item in order.Items)
         {
@@ -57,7 +51,6 @@ public class OrderDetailsController : ControllerBase
             });
         }
 
-        // 3. Return the combined, client-shaped response.
         return Ok(new OrderDetailsResponse
         {
             OrderId = order.Id,

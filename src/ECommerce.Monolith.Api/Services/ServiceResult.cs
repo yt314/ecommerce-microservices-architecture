@@ -1,10 +1,8 @@
 namespace ECommerce.Monolith.Api.Services;
 
-/// <summary>
-/// A tiny result wrapper so the service layer can report business outcomes
-/// (success, not-found, validation failure) without throwing exceptions or
-/// depending on ASP.NET types. Controllers translate this into HTTP results.
-/// </summary>
+// Lets the service layer report success/not-found/validation outcomes without
+// throwing exceptions for control flow or depending on ASP.NET types directly;
+// controllers map this to the actual HTTP status.
 public class ServiceResult<T>
 {
     public bool Succeeded { get; private init; }

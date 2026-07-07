@@ -7,21 +7,12 @@ using Shared.Messaging;
 
 namespace OrderService.Services;
 
-/// <summary>Result of placing an order: either a Pending order or a validation error.</summary>
+// Exactly one of Order / ValidationError is set.
 public record PlaceOrderResult(OrderResponse? Order, string? ValidationError);
 
-/// <summary>
-/// OrderService's part of the choreography saga.
-///
-/// PlaceOrderAsync (sync, fast):
-///   - validate products against ProductCatalogService (fast-fail on bad product)
-///   - save a PENDING order with price snapshots
-///   - publish OrderPlaced and return immediately
-///
-/// HandleInventoryReserved/Rejected (async, from the broker):
-///   - move the order to Confirmed/Rejected and publish the matching event
-///   - idempotent: only acts while the order is still Pending
-/// </summary>
+// OrderService's half of the choreography saga: PlaceOrderAsync runs
+// synchronously up to publishing OrderPlaced; everything after that (Confirmed
+// or Rejected) happens later, driven by whichever event the broker delivers.
 public class OrderProcessor
 {
     private readonly OrderDbContext _db;
@@ -47,7 +38,6 @@ public class OrderProcessor
             .GroupBy(i => i.ProductId)
             .ToDictionary(g => g.Key, g => g.Sum(x => x.Quantity));
 
-        // Synchronous product validation (fast). Inventory is checked later, async.
         var order = new Order
         {
             CustomerEmail = request.CustomerEmail,
@@ -78,7 +68,6 @@ public class OrderProcessor
         await _db.SaveChangesAsync();
         _logger.LogInformation("Order {OrderId} created as Pending; publishing OrderPlaced.", order.Id);
 
-        // Kick off the saga.
         _publisher.Publish(EventBusConstants.OrderPlacedKey, new OrderPlaced(
             Guid.NewGuid(),
             order.Id,
@@ -88,7 +77,8 @@ public class OrderProcessor
         return new PlaceOrderResult(ToResponse(order), null);
     }
 
-    /// <summary>InventoryReserved → confirm the order. Idempotent on order status.</summary>
+    // Guarding on Status makes this idempotent: a duplicate InventoryReserved
+    // for an already-Confirmed order is a no-op instead of a double-publish.
     public async Task HandleInventoryReservedAsync(int orderId)
     {
         var order = await _db.Orders.FirstOrDefaultAsync(o => o.Id == orderId);
@@ -107,7 +97,6 @@ public class OrderProcessor
             new OrderConfirmed(Guid.NewGuid(), order.Id, order.CustomerEmail, order.TotalAmount));
     }
 
-    /// <summary>InventoryRejected → reject the order. Idempotent on order status.</summary>
     public async Task HandleInventoryRejectedAsync(int orderId, string reason)
     {
         var order = await _db.Orders.FirstOrDefaultAsync(o => o.Id == orderId);

@@ -3,7 +3,6 @@ using Microsoft.EntityFrameworkCore;
 
 namespace InventoryService.Data;
 
-/// <summary>EF Core context for the Inventory PostgreSQL database.</summary>
 public class InventoryDbContext : DbContext
 {
     public InventoryDbContext(DbContextOptions<InventoryDbContext> options) : base(options) { }

@@ -1,9 +1,7 @@
 namespace ECommerce.Monolith.Api.Entities;
 
-/// <summary>
-/// A customer order. The total amount and status are computed by the
-/// order service when the order is placed, not supplied by the client.
-/// </summary>
+// TotalAmount and Status are computed by OrderService when the order is
+// placed — never taken directly from the client request.
 public class Order
 {
     public int Id { get; set; }
@@ -11,7 +9,5 @@ public class Order
     public OrderStatus Status { get; set; } = OrderStatus.Pending;
     public DateTime CreatedAt { get; set; }
     public decimal TotalAmount { get; set; }
-
-    /// <summary>The line items belonging to this order.</summary>
     public List<OrderItem> Items { get; set; } = new();
 }

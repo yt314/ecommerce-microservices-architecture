@@ -41,7 +41,6 @@ public class ProductCache
         return product;
     }
 
-    /// <summary>Removes the cached product so the next read fetches fresh data.</summary>
     public async Task InvalidateAsync(string id)
     {
         var db = _redis.GetDatabase();

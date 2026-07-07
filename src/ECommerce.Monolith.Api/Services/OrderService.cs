@@ -5,17 +5,12 @@ using Microsoft.EntityFrameworkCore;
 
 namespace ECommerce.Monolith.Api.Services;
 
-/// <summary>
-/// The heart of Phase 1: placing an order. This is where Products, Inventory
-/// and Orders logic come together inside the monolith.
-///
-/// Placement rules:
-///   1. Every requested product must exist and be active.
-///   2. There must be enough available inventory for every line.
-///   3. On success: available stock is decreased (moved to reserved) and a
-///      Confirmed order is created — all in a single database transaction.
-///   4. On failure: nothing is persisted and a clear validation error is returned.
-/// </summary>
+// Placement rules:
+//   1. Every requested product must exist and be active.
+//   2. There must be enough available inventory for every line.
+//   3. On success: stock moves from available to reserved and a Confirmed
+//      order is created, all in a single transaction.
+//   4. On failure: nothing is persisted.
 public class OrderService
 {
     private readonly AppDbContext _db;
@@ -40,7 +35,6 @@ public class OrderService
         var strategy = _db.Database.CreateExecutionStrategy();
         return await strategy.ExecuteAsync(async () =>
         {
-            // Load the involved products together with their inventory in one query.
             var products = await _db.Products
                 .Include(p => p.Inventory)
                 .Where(p => productIds.Contains(p.Id))

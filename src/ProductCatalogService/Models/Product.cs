@@ -3,12 +3,8 @@ using MongoDB.Bson.Serialization.Attributes;
 
 namespace ProductCatalogService.Models;
 
-/// <summary>
-/// A product document stored in MongoDB. Unlike the relational Phase 1 entity,
-/// this one has a free-form <see cref="Attributes"/> bag so each category can
-/// carry its own fields (e.g. a shirt has "size", a laptop has "ram") — this is
-/// exactly the flexibility that makes a catalog a good fit for a document DB.
-/// </summary>
+// Attributes is a free-form bag so each category can carry its own fields
+// (a shirt has "size", a laptop has "ram") without a schema migration.
 public class Product
 {
     [BsonId]
@@ -25,6 +21,5 @@ public class Product
     public string Category { get; set; } = string.Empty;
     public bool IsActive { get; set; } = true;
 
-    /// <summary>Optional, category-specific attributes (the "flexible schema").</summary>
     public Dictionary<string, string> Attributes { get; set; } = new();
 }

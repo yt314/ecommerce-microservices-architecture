@@ -5,11 +5,6 @@ using Microsoft.EntityFrameworkCore;
 
 namespace ECommerce.Monolith.Api.Services;
 
-/// <summary>
-/// Business logic for the product catalog. Controllers stay thin and delegate
-/// all data access and rules here. When a product is created we also create
-/// its inventory record (starting at zero) so every product is stock-trackable.
-/// </summary>
 public class ProductService
 {
     private readonly AppDbContext _db;

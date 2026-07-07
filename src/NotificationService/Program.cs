@@ -9,19 +9,17 @@ ObservabilityExtensions.RunHealthProbeIfRequested(args);
 
 var builder = WebApplication.CreateBuilder(args);
 
-// Phase 5: structured logging to console + Seq.
 builder.AddObservability("NotificationService");
 
 builder.Services.AddControllers();
 builder.Services.AddEndpointsApiExplorer();
 builder.Services.AddSwaggerGen(o => o.SwaggerDoc("v1", new() { Title = "NotificationService", Version = "v1" }));
 
-// RabbitMQ connection + the consumer that records final order notifications.
 builder.Services.AddRabbitMqMessaging();
 builder.Services.AddHostedService<NotificationSagaConsumer>();
 
-// Redis connection (singleton multiplexer). AbortOnConnectFail=false lets the
-// service start even if Redis is still booting; it reconnects automatically.
+// AbortOnConnectFail=false so the service still starts if Redis is mid-boot;
+// StackExchange.Redis reconnects automatically once it's up.
 var redisConnection = builder.Configuration["Redis:ConnectionString"] ?? "localhost:6379";
 var options = ConfigurationOptions.Parse(redisConnection);
 options.AbortOnConnectFail = false;

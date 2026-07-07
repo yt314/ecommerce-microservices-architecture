@@ -1,8 +1,5 @@
 namespace WebBffService.DTOs;
 
-// --- Shapes used to deserialize responses from the backend services ---
-
-/// <summary>Order as returned by OrderService.</summary>
 public record BackendOrder(
     int Id,
     string CustomerEmail,
@@ -18,7 +15,6 @@ public record BackendOrderItem(
     decimal UnitPrice,
     int Quantity);
 
-/// <summary>Product as returned by ProductCatalogService.</summary>
 public record BackendProduct(
     string Id,
     string Name,
@@ -28,9 +24,6 @@ public record BackendProduct(
     bool IsActive,
     Dictionary<string, string> Attributes);
 
-// --- The aggregated shape returned to the web client ---
-
-/// <summary>Current catalog details for a product (may be null if it no longer exists).</summary>
 public record ProductInfo
 {
     public string Id { get; init; } = string.Empty;
@@ -42,7 +35,6 @@ public record ProductInfo
     public Dictionary<string, string> Attributes { get; init; } = new();
 }
 
-/// <summary>One order line enriched with live product details.</summary>
 public record OrderDetailLine
 {
     public string ProductId { get; init; } = string.Empty;
@@ -50,10 +42,12 @@ public record OrderDetailLine
     public decimal UnitPriceAtOrder { get; init; }
     public string ProductNameAtOrder { get; init; } = string.Empty;
     public decimal LineTotal { get; init; }
+
+    // Null if the product was since deleted from the catalog; the *AtOrder
+    // fields above still preserve what the customer actually bought.
     public ProductInfo? Product { get; init; }
 }
 
-/// <summary>The combined order-details response shaped for a web client.</summary>
 public record OrderDetailsResponse
 {
     public int OrderId { get; init; }

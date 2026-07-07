@@ -2,7 +2,6 @@ using System.ComponentModel.DataAnnotations;
 
 namespace OrderService.DTOs;
 
-/// <summary>A single requested line when placing an order.</summary>
 public record CreateOrderItemRequest
 {
     [Required]
@@ -12,7 +11,6 @@ public record CreateOrderItemRequest
     public int Quantity { get; init; }
 }
 
-/// <summary>Payload to place an order.</summary>
 public record CreateOrderRequest
 {
     [Required, EmailAddress, MaxLength(256)]
@@ -22,7 +20,6 @@ public record CreateOrderRequest
     public List<CreateOrderItemRequest> Items { get; init; } = new();
 }
 
-/// <summary>A single order line returned to clients.</summary>
 public record OrderItemResponse
 {
     public string ProductId { get; init; } = string.Empty;
@@ -31,7 +28,6 @@ public record OrderItemResponse
     public int Quantity { get; init; }
 }
 
-/// <summary>An order returned to clients.</summary>
 public record OrderResponse
 {
     public int Id { get; init; }

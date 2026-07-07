@@ -3,10 +3,6 @@ using Shared.Messaging;
 
 namespace OrderService.Services;
 
-/// <summary>
-/// Consumes inventory results and drives the order to its final state.
-/// Reads the "order.inventory-results" queue (InventoryReserved / InventoryRejected).
-/// </summary>
 public class OrderSagaConsumer : RabbitMqConsumerBase
 {
     public OrderSagaConsumer(RabbitMqConnection connection, IServiceScopeFactory scopeFactory, ILogger<OrderSagaConsumer> logger)

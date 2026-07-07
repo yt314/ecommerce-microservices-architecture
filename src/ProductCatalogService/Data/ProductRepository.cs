@@ -4,11 +4,8 @@ using ProductCatalogService.Models;
 
 namespace ProductCatalogService.Data;
 
-/// <summary>
-/// Thin data-access layer over the MongoDB "products" collection.
-/// This is the ONLY code that touches the catalog database — no other
-/// service has access to it (database-per-service).
-/// </summary>
+// The only code that touches the catalog's MongoDB collection — no other
+// service is allowed to reach it directly (database-per-service).
 public class ProductRepository
 {
     private readonly IMongoCollection<Product> _products;
@@ -38,7 +35,6 @@ public class ProductRepository
         return await _products.Find(p => p.Id == id).FirstOrDefaultAsync();
     }
 
-    /// <summary>Replaces an existing product. Returns false if the id does not exist.</summary>
     public async Task<bool> UpdateAsync(string id, Product updated)
     {
         if (!ObjectId.TryParse(id, out _))

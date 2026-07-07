@@ -4,11 +4,8 @@ using RabbitMQ.Client;
 
 namespace Shared.Messaging;
 
-/// <summary>
-/// Owns a single long-lived RabbitMQ connection (thread-safe; channels are
-/// created from it per-publish / per-consumer). Retries on startup because the
-/// broker may still be booting when a service starts.
-/// </summary>
+// Retries on startup because RabbitMQ is often still booting when this
+// service's container starts.
 public class RabbitMqConnection : IDisposable
 {
     private readonly IConnection _connection;

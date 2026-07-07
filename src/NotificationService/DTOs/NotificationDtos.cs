@@ -2,7 +2,6 @@ using System.ComponentModel.DataAnnotations;
 
 namespace NotificationService.DTOs;
 
-/// <summary>Payload OrderService sends to record a notification.</summary>
 public record CreateNotificationRequest
 {
     [Required, EmailAddress]
@@ -11,14 +10,14 @@ public record CreateNotificationRequest
     [Required]
     public string OrderId { get; init; } = string.Empty;
 
-    /// <summary>Final order state, e.g. "Confirmed" or "Rejected".</summary>
+    // Expected values are "Confirmed" or "Rejected" — not an enum, since this
+    // also round-trips through JSON as a saga event field.
     [Required]
     public string Status { get; init; } = string.Empty;
 
     public string Message { get; init; } = string.Empty;
 }
 
-/// <summary>A stored notification record.</summary>
 public record NotificationRecord
 {
     public string Id { get; init; } = string.Empty;

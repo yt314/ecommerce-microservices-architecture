@@ -3,17 +3,14 @@ using WebBffService.DTOs;
 
 namespace WebBffService.Clients;
 
-/// <summary>
-/// Typed HTTP client the BFF uses to read product details. Its base address
-/// points at the catalog load balancer, so BFF reads are load-balanced too.
-/// </summary>
+// Base address points at the catalog-lb load balancer, not a single replica —
+// so BFF reads get spread across catalog instances too.
 public class ProductCatalogClient
 {
     private readonly HttpClient _http;
 
     public ProductCatalogClient(HttpClient http) => _http = http;
 
-    /// <summary>Returns the product, or null if it does not exist (404).</summary>
     public async Task<BackendProduct?> GetProductAsync(string productId)
     {
         var response = await _http.GetAsync($"/api/products/{productId}");

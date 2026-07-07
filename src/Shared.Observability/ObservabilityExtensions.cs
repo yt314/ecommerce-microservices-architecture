@@ -5,19 +5,11 @@ using Serilog.Events;
 
 namespace Shared.Observability;
 
-/// <summary>
-/// One-call setup for Phase 5 observability so the services stay almost unchanged:
-///   - structured logging via Serilog to console + Seq, enriched with the service
-///     name and (from LogContext / log scopes) the CorrelationId;
-///   - a self-contained health probe used by the docker-compose healthchecks.
-/// </summary>
 public static class ObservabilityExtensions
 {
-    /// <summary>
-    /// Configures Serilog as the logging provider. Reads the Seq endpoint from
-    /// "Seq:ServerUrl" (env var Seq__ServerUrl in docker-compose), defaulting to
-    /// localhost for running a service outside Docker.
-    /// </summary>
+    // "Seq:ServerUrl" maps to env var Seq__ServerUrl in docker-compose (the
+    // double underscore is .NET config's convention for nested keys). Falls
+    // back to localhost so a service still logs somewhere when run outside Docker.
     public static WebApplicationBuilder AddObservability(this WebApplicationBuilder builder, string serviceName)
     {
         var seqUrl = builder.Configuration["Seq:ServerUrl"] ?? "http://localhost:5341";
@@ -35,12 +27,9 @@ public static class ObservabilityExtensions
         return builder;
     }
 
-    /// <summary>
-    /// If the process was started with "--healthcheck" (the docker-compose
-    /// healthcheck command), probe this container's own /health endpoint and exit
-    /// 0/1 instead of starting the web host. Needs no extra tools in the image —
-    /// it reuses the .NET runtime that is already present.
-    /// </summary>
+    // Lets docker-compose's healthcheck run `dotnet <Service>.dll --healthcheck`
+    // as a short-lived self-probe instead of starting the full web host — no
+    // curl or extra tooling needed in the runtime image.
     public static void RunHealthProbeIfRequested(string[] args)
     {
         if (!args.Contains("--healthcheck"))

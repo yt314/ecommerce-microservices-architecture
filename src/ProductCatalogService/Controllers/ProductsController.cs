@@ -5,7 +5,6 @@ using ProductCatalogService.Models;
 
 namespace ProductCatalogService.Controllers;
 
-/// <summary>HTTP endpoints for the product catalog (backed by MongoDB).</summary>
 [ApiController]
 [Route("api/products")]
 public class ProductsController : ControllerBase
@@ -19,16 +18,12 @@ public class ProductsController : ControllerBase
         _cache = cache;
     }
 
-    /// <summary>
-    /// Returns which replica/container served this request. Used to prove load
-    /// balancing: call it repeatedly through the gateway and watch the id change.
-    /// Declared before the "{id}" route so the literal "instance" wins.
-    /// </summary>
+    // Must stay declared before the "{id}" route below, or routing would treat
+    // "instance" as an {id} value instead of matching this literal route.
     [HttpGet("instance")]
     public ActionResult<object> Instance()
         => Ok(new { instanceId = Environment.MachineName, service = "ProductCatalogService" });
 
-    /// <summary>Create a product.</summary>
     [HttpPost]
     public async Task<ActionResult<ProductResponse>> Create(CreateProductRequest request)
     {
@@ -46,7 +41,6 @@ public class ProductsController : ControllerBase
         return CreatedAtAction(nameof(GetById), new { id = created.Id }, ToResponse(created));
     }
 
-    /// <summary>List all products.</summary>
     [HttpGet]
     public async Task<ActionResult<IEnumerable<ProductResponse>>> GetAll()
     {
@@ -54,7 +48,6 @@ public class ProductsController : ControllerBase
         return Ok(products.Select(ToResponse));
     }
 
-    /// <summary>Get a single product by id (cache-aside via Redis).</summary>
     [HttpGet("{id}")]
     public async Task<ActionResult<ProductResponse>> GetById(string id)
     {
@@ -64,7 +57,6 @@ public class ProductsController : ControllerBase
             : Ok(ToResponse(product));
     }
 
-    /// <summary>Update an existing product.</summary>
     [HttpPut("{id}")]
     public async Task<ActionResult<ProductResponse>> Update(string id, UpdateProductRequest request)
     {
@@ -82,7 +74,6 @@ public class ProductsController : ControllerBase
         if (!updated)
             return NotFound(new { error = $"Product {id} was not found." });
 
-        // Cache-aside invalidation: drop the stale cached copy.
         await _cache.InvalidateAsync(id);
 
         product.Id = id;

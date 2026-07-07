@@ -1,10 +1,8 @@
 namespace OrderService.Entities;
 
-/// <summary>
-/// A customer order, owned by OrderService's SQL Server database.
-/// Product names/prices are snapshotted onto the order items at order time,
-/// fetched over HTTP from ProductCatalogService.
-/// </summary>
+// ProductName/UnitPrice on each item are snapshotted at order time (fetched
+// from ProductCatalogService), so a later price or name change doesn't alter
+// the history of an existing order.
 public class Order
 {
     public int Id { get; set; }

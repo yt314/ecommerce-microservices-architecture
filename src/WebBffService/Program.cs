@@ -7,16 +7,14 @@ ObservabilityExtensions.RunHealthProbeIfRequested(args);
 
 var builder = WebApplication.CreateBuilder(args);
 
-// Phase 5: structured logging to console + Seq.
 builder.AddObservability("WebBffService");
 
 builder.Services.AddControllers();
 builder.Services.AddEndpointsApiExplorer();
 builder.Services.AddSwaggerGen(o => o.SwaggerDoc("v1", new() { Title = "WebBffService", Version = "v1" }));
 
-// Typed HTTP clients to the backend services. Base addresses come from config
-// (env vars in docker-compose). The catalog client points at the load balancer.
-// The propagation handler carries the correlation id onto both aggregated calls.
+// Both clients go through CorrelationPropagationHandler so the two aggregated
+// calls this BFF makes stay tagged with the request's correlation id.
 builder.Services.AddTransient<CorrelationPropagationHandler>();
 builder.Services.AddHttpClient<OrderClient>(c =>
     c.BaseAddress = new Uri(builder.Configuration["Services:Order"] ?? "http://localhost:8083"))

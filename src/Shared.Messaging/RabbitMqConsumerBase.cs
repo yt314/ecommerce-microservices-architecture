@@ -7,15 +7,10 @@ using RabbitMQ.Client.Events;
 
 namespace Shared.Messaging;
 
-/// <summary>
-/// Base class for a background consumer bound to one durable queue. Subclasses
-/// declare the queue name + routing keys and implement the message handler.
-///
-/// Key behaviours:
-///   - prefetch = 1  → one message processed at a time (sequential, simple idempotency).
-///   - manual ack    → ack only after the handler succeeds; nack (drop) on error.
-///   - a DI scope is created per message so handlers can use scoped services (DbContext).
-/// </summary>
+// prefetch=1 processes one message at a time per queue — deliberately slower,
+// but it keeps the idempotency checks in each handler race-free without extra
+// locking. A failed handler nacks without requeue (see below), so it's dropped
+// rather than retried forever.
 public abstract class RabbitMqConsumerBase : BackgroundService
 {
     private readonly RabbitMqConnection _connection;
@@ -30,13 +25,11 @@ public abstract class RabbitMqConsumerBase : BackgroundService
         _logger = logger;
     }
 
-    /// <summary>The durable queue this consumer reads from.</summary>
     protected abstract string QueueName { get; }
-
-    /// <summary>Routing keys to bind the queue to on the shared exchange.</summary>
     protected abstract string[] RoutingKeys { get; }
 
-    /// <summary>Handle one message. Throw to nack (the message is dropped and logged).</summary>
+    // Throwing here nacks the message without requeue — it's dropped and
+    // logged, not retried. Don't throw for cases you want redelivered.
     protected abstract Task HandleAsync(string routingKey, string body, IServiceProvider services, CancellationToken ct);
 
     protected override Task ExecuteAsync(CancellationToken stoppingToken)
